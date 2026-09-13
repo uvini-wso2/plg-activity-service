@@ -1,6 +1,10 @@
 package handler
 
-import "github.com/uvini-wso2/plg-activity-service/internal/moesif"
+import (
+	"errors"
+
+	"github.com/uvini-wso2/plg-activity-service/internal/moesif"
+)
 
 // mockMoesifClient is a test double for eventsClient. Configure Response
 // and Err before use in a test; LastCriteria captures the FilterCriteria
@@ -19,3 +23,5 @@ func (m *mockMoesifClient) Search(criteria moesif.FilterCriteria) (moesif.Search
 	}
 	return m.Response, nil
 }
+
+var errFake = errors.New("simulated moesif failure")

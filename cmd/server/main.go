@@ -30,6 +30,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /events", handler.Events(client))
+	mux.HandleFunc("GET /validate", handler.Validate(client))
 
 	slog.Info("starting server", "port", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
