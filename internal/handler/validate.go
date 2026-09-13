@@ -12,6 +12,11 @@ import (
 
 // Validate handles GET /validate?company_id=...&user_id=...&email=...&domain=...&category=...
 //
+// Returns the validation outcome + reasoning tags, ALONGSIDE the full
+// prospect activity summary (org info, tenure, product activity) — per
+// the "Validation Insight Delivery" requirement: a CS engineer needs to
+// see not just the decision, but the underlying data that produced it.
+//
 // TEMPORARY (2026-09-11): since the real classification API doesn't exist
 // yet, this endpoint accepts the classification result directly as query
 // params, rather than calling that API internally. Once the classification
@@ -66,8 +71,28 @@ func Validate(client eventsClient) http.HandlerFunc {
 
 		validationResult := validation.Classify(ec, summary)
 
+		// Response combines the validation decision with the full prospect
+		// summary (org info, tenure, product activity) — same
+		// Summary-embedding pattern used by /events, plus the classification
+		// inputs and the decision itself layered on top.
+		response := struct {
+			Outcome validation.Outcome `json:"outcome"`
+			Tags    []string           `json:"tags"`
+			Email   string             `json:"email"`
+			Domain  string             `json:"domain"`
+			moesif.Summary
+			EventsFound int `json:"eventsFound"`
+		}{
+			Outcome:     validationResult.Outcome,
+			Tags:        validationResult.Tags,
+			Email:       email,
+			Domain:      domain,
+			Summary:     summary,
+			EventsFound: result.Result.Total,
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(validationResult); err != nil {
+		if err := json.NewEncoder(w).Encode(response); err != nil {
 			http.Error(w, `{"error":"failed to encode response"}`, http.StatusInternalServerError)
 			return
 		}
