@@ -12,6 +12,11 @@ import "github.com/uvini-wso2/plg-activity-service/internal/moesif"
 // so WSO2 must be excluded first or it would incorrectly qualify as
 // Eligible via the corporate rule.
 func Classify(ec EmailClassification, summary moesif.Summary) Result {
+	// Disposable emails are excluded unconditionally, regardless of product
+	// activity — even a disposable-email account with lots of real
+	// engagement isn't a genuine, reachable customer, so there's no
+	// meaningful-activity check here at all (confirmed with team,
+	// 2026-09-11).
 	if ec.Category == CategoryDisposable {
 		return Result{Outcome: OutcomeExcluded, Tags: []string{TagDisposableDomain}}
 	}
