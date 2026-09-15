@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 
+	"github.com/uvini-wso2/plg-activity-service/internal/email"
 	"github.com/uvini-wso2/plg-activity-service/internal/moesif"
 )
 
@@ -25,3 +26,18 @@ func (m *mockMoesifClient) Search(criteria moesif.FilterCriteria) (moesif.Search
 }
 
 var errFake = errors.New("simulated moesif failure")
+
+// mockGenerator is a test double for email.Generator.
+type mockGenerator struct {
+	Response string
+	Err      error
+	LastCall email.Prompt
+}
+
+func (m *mockGenerator) Generate(p email.Prompt) (string, error) {
+	m.LastCall = p
+	if m.Err != nil {
+		return "", m.Err
+	}
+	return m.Response, nil
+}

@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	emailpkg "github.com/uvini-wso2/plg-activity-service/internal/email"
 	"github.com/uvini-wso2/plg-activity-service/internal/handler"
 	"github.com/uvini-wso2/plg-activity-service/internal/moesif"
 )
@@ -31,6 +32,12 @@ func main() {
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /events", handler.Events(client))
 	mux.HandleFunc("GET /validate", handler.Validate(client))
+
+	emailGenerator := emailpkg.NewClient(emailpkg.Config{
+		APIKey: os.Getenv("ANTHROPIC_API_KEY"),
+		Model:  "claude-sonnet-4-5",
+	})
+	mux.HandleFunc("GET /generate-email", handler.GenerateEmail(client, emailGenerator))
 
 	slog.Info("starting server", "port", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {

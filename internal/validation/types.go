@@ -47,6 +47,7 @@ const (
 	TagExplicitNeedForAssistance = "Explicit Need for Assistance" // NOTE: data source for this signal is out of scope for now (2026-09-11) — no logic currently sets this tag.
 	TagDisposableDomain          = "Disposable Domain"
 	TagWSO2Domain                = "WSO2 Domain"
+	TagInvalidEmail              = "Invalid Email"
 )
 
 // Result is the full validation output: the outcome plus the tags that

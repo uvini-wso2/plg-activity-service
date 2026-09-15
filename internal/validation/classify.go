@@ -25,6 +25,13 @@ func Classify(ec EmailClassification, summary moesif.Summary) Result {
 		return Result{Outcome: OutcomeExcluded, Tags: []string{TagWSO2Domain}}
 	}
 
+	//provider_testing (e.g. test@gmail.com, role-based/testing mailboxes)
+	// is confirmed invalid — excluded outright, not checked for meaningful
+	// activity like personal email (confirmed with team, 2026-09-13).
+	if ec.Category == CategoryProviderTesting {
+		return Result{Outcome: OutcomeExcluded, Tags: []string{TagInvalidEmail}}
+	}
+
 	if ec.Category == CategoryCorporate {
 		// Corporate is Eligible regardless of product activity, per team rule.
 		return Result{Outcome: OutcomeEligible, Tags: []string{TagCorporateDomain}}
@@ -33,7 +40,7 @@ func Classify(ec EmailClassification, summary moesif.Summary) Result {
 	// Generic/free email (personal, or provider_testing treated the same
 	// way per team decision 2026-09-11) qualifies as Eligible only with
 	// meaningful product activity.
-	if (ec.Category == CategoryPersonal || ec.Category == CategoryProviderTesting) && hasMeaningfulActivity(summary) {
+	if ec.Category == CategoryPersonal && hasMeaningfulActivity(summary) {
 		return Result{Outcome: OutcomeEligible, Tags: []string{TagMeaningfulProductActivity}}
 	}
 

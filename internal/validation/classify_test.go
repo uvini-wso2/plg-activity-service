@@ -91,21 +91,18 @@ func TestClassify_PersonalWithNoActivity(t *testing.T) {
 	}
 }
 
-func TestClassify_ProviderTestingTreatedAsGeneric(t *testing.T) {
+// TestClassify_ProviderTestingExcluded confirms the corrected rule
+// (2026-09-13): provider_testing emails are invalid and excluded
+// outright, regardless of activity — NOT treated like personal email.
+func TestClassify_ProviderTestingExcluded(t *testing.T) {
 	ec := EmailClassification{Domain: "gmail.com", Category: CategoryProviderTesting}
 	summary := moesif.Summary{ProductActivity: moesif.ProductActivity{ApplicationCreated: true}}
 	result := Classify(ec, summary)
 
-	if result.Outcome != OutcomeEligible {
-		t.Errorf("expected Eligible (provider_testing treated like generic email per team decision), got %s", result.Outcome)
+	if result.Outcome != OutcomeExcluded {
+		t.Errorf("expected Excluded (provider_testing is invalid, regardless of activity), got %s", result.Outcome)
 	}
-}
-
-func TestClassify_ProviderTestingWithNoActivity(t *testing.T) {
-	ec := EmailClassification{Domain: "gmail.com", Category: CategoryProviderTesting}
-	result := Classify(ec, moesif.Summary{})
-
-	if result.Outcome != OutcomeMonitored {
-		t.Errorf("expected Monitored, got %s", result.Outcome)
+	if len(result.Tags) != 1 || result.Tags[0] != TagInvalidEmail {
+		t.Errorf("expected tags [%s], got %v", TagInvalidEmail, result.Tags)
 	}
 }
