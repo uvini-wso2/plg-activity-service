@@ -177,7 +177,7 @@ func TestEvents_ResponseFieldNames(t *testing.T) {
 	if !ok {
 		t.Fatal("expected productActivity to be an object")
 	}
-	requiredProductActivityFields := []string{"applicationCreated", "hasSkippedOnboarding", "skippedStepNumber"}
+	requiredProductActivityFields := []string{"applicationCreated", "hasCompletedOnboarding", "skippedStepNumber"}
 	for _, field := range requiredProductActivityFields {
 		if _, ok := productActivity[field]; !ok {
 			t.Errorf("expected productActivity to contain field %q, but it was missing", field)

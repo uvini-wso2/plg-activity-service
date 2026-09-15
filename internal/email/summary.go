@@ -25,7 +25,7 @@ func SummarizeActivity(s moesif.Summary) string {
 
 	if s.ProductActivity.ApplicationCreated {
 		lines = append(lines, "Completed onboarding and created an application.")
-	} else if s.ProductActivity.HasSkippedOnboarding {
+	} else if s.ProductActivity.SkippedStepNumber != nil {
 		step := "an early step"
 		if s.ProductActivity.SkippedStepName != "" {
 			step = s.ProductActivity.SkippedStepName

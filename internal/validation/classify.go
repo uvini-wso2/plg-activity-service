@@ -63,5 +63,5 @@ func Classify(ec EmailClassification, summary moesif.Summary) Result {
 // available Moesif fields. Confirm with Supeshala before relying on this
 // for real classification decisions.
 func hasMeaningfulActivity(summary moesif.Summary) bool {
-	return summary.ProductActivity.ApplicationCreated || summary.ProductActivity.HasSkippedOnboarding
+	return summary.ProductActivity.ApplicationCreated || summary.ProductActivity.SkippedStepNumber != nil
 }

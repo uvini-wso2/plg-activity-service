@@ -74,7 +74,8 @@ func TestClassify_PersonalWithMeaningfulActivity_ApplicationCreated(t *testing.T
 // per the clarified definition (CS has something specific to reference).
 func TestClassify_PersonalWithMeaningfulActivity_SkippedOnboarding(t *testing.T) {
 	ec := EmailClassification{Domain: "gmail.com", Category: CategoryPersonal}
-	summary := moesif.Summary{ProductActivity: moesif.ProductActivity{HasSkippedOnboarding: true}}
+	stepZero := 0
+	summary := moesif.Summary{ProductActivity: moesif.ProductActivity{SkippedStepNumber: &stepZero}}
 	result := Classify(ec, summary)
 
 	if result.Outcome != OutcomeEligible {
