@@ -25,9 +25,23 @@ const (
 	ActionNameAPICall               = "api_call"
 )
 
-// timeOutputLayout formats output timestamps as UTC. Moesif's raw
-// timestamps carry no timezone suffix and are treated as UTC throughout.
-const timeOutputLayout = "2006-01-02T15:04:05Z"
+// sriLankaLocation is used to format ALL output timestamps in Sri Lankan
+// time, since the CS team operating this system is based in Sri Lanka
+// (team decision, 2026-09-16). This is separate from the "timezone" and
+// "countryName" fields below, which report the PROSPECT's own location —
+// this only affects how firstSeen/lastActivity are DISPLAYED. Falls back
+// to UTC if the timezone database is somehow unavailable.
+var sriLankaLocation = func() *time.Location {
+	loc, err := time.LoadLocation("Asia/Colombo")
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}()
+
+// timeOutputLayout includes a numeric UTC offset (e.g. +05:30) rather
+// than "Z", since output is no longer plain UTC.
+const timeOutputLayout = "2006-01-02T15:04:05-07:00"
 
 // ProductActivity holds signals specific to THIS product (Asgardeo).
 type ProductActivity struct {
@@ -103,10 +117,10 @@ func Normalize(hits []RawHit) Summary {
 	}
 
 	if !latest.IsZero() {
-		summary.LastActivity = latest.Format(timeOutputLayout)
+		summary.LastActivity = latest.In(sriLankaLocation).Format(timeOutputLayout)
 	}
 	if !earliest.IsZero() {
-		summary.FirstSeen = earliest.Format(timeOutputLayout)
+		summary.FirstSeen = earliest.In(sriLankaLocation).Format(timeOutputLayout)
 	}
 
 	return summary
