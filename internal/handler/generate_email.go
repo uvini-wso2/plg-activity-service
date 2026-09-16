@@ -52,8 +52,8 @@ func GenerateEmail(client eventsClient, generator email.Generator) http.HandlerF
 		emailAddr := strings.TrimSpace(r.URL.Query().Get("email"))
 		domain := strings.TrimSpace(r.URL.Query().Get("domain"))
 		category := strings.TrimSpace(r.URL.Query().Get("category"))
-		if emailAddr == "" || domain == "" || category == "" {
-			http.Error(w, `{"error":"email, domain, and category query parameters are required"}`, http.StatusBadRequest)
+		if domain == "" || category == "" {
+			http.Error(w, `{"error":"domain and category query parameters are required"}`, http.StatusBadRequest)
 			return
 		}
 

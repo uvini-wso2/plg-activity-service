@@ -42,8 +42,8 @@ func Validate(client eventsClient) http.HandlerFunc {
 		email := strings.TrimSpace(r.URL.Query().Get("email"))
 		domain := strings.TrimSpace(r.URL.Query().Get("domain"))
 		category := strings.TrimSpace(r.URL.Query().Get("category"))
-		if email == "" || domain == "" || category == "" {
-			http.Error(w, `{"error":"email, domain, and category query parameters are required"}`, http.StatusBadRequest)
+		if domain == "" || category == "" {
+			http.Error(w, `{"error":"domain and category query parameters are required"}`, http.StatusBadRequest)
 			return
 		}
 
@@ -78,7 +78,7 @@ func Validate(client eventsClient) http.HandlerFunc {
 		response := struct {
 			Outcome validation.Outcome `json:"outcome"`
 			Tags    []string           `json:"tags"`
-			Email   string             `json:"email"`
+			Email   string             `json:"email,omitempty"`
 			Domain  string             `json:"domain"`
 			moesif.Summary
 			EventsFound int `json:"eventsFound"`

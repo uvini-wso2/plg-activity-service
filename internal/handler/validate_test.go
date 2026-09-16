@@ -144,3 +144,49 @@ func TestValidate_IncludesFullSummary(t *testing.T) {
 		t.Errorf("expected outcome = PLG CS Eligible (meaningful activity), got %v", body["outcome"])
 	}
 }
+
+// TestValidate_EmailOptional confirms the fix (2026-09-16): domain and
+// category are required, but email is NOT — Classify() never actually
+// uses the email address itself for any decision, only category and
+// domain, so requiring it was stricter than necessary.
+func TestValidate_EmailOptional(t *testing.T) {
+	mock := &mockMoesifClient{
+		Response: moesif.SearchResponse{
+			Result: moesif.HitsResult{Hits: []moesif.RawHit{}, Total: 3},
+		},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/validate?company_id=company_456&domain=acme.com&category=corporate", nil)
+	rec := httptest.NewRecorder()
+
+	Validate(mock)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 (email should be optional), got %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to parse response JSON: %v", err)
+	}
+
+	if body["outcome"] != "PLG CS Eligible" {
+		t.Errorf("expected outcome = PLG CS Eligible, got %v", body["outcome"])
+	}
+	if _, exists := body["email"]; exists {
+		t.Error("expected NO email field in response when email wasn't provided (omitempty)")
+	}
+}
+
+// TestValidate_MissingDomainOrCategory confirms domain and category are
+// still genuinely required, even though email no longer is.
+func TestValidate_MissingDomainOrCategory(t *testing.T) {
+	mock := &mockMoesifClient{}
+	req := httptest.NewRequest(http.MethodGet, "/validate?company_id=company_456&email=a@b.com", nil)
+	rec := httptest.NewRecorder()
+
+	Validate(mock)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400 (domain/category still required), got %d", rec.Code)
+	}
+}
