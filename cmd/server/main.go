@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"github.com/uvini-wso2/plg-activity-service/internal/apim"
 	emailpkg "github.com/uvini-wso2/plg-activity-service/internal/email"
 	"github.com/uvini-wso2/plg-activity-service/internal/handler"
 	"github.com/uvini-wso2/plg-activity-service/internal/moesif"
@@ -16,7 +17,7 @@ func main() {
 	// Load .env if present — silently ignored if it doesn't exist.
 	_ = godotenv.Load()
 
-	apiKey := os.Getenv("MOESIF_API_KEY")
+	apiKey := os.Getenv("ASGARDEO_MOESIF_API_KEY")
 	baseURL := os.Getenv("MOESIF_BASE_URL")
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -32,6 +33,12 @@ func main() {
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /events", handler.Events(client))
 	mux.HandleFunc("GET /validate", handler.Validate(client))
+
+	apimClient := apim.NewClient(apim.Config{
+		APIKey:  os.Getenv("APIM_MOESIF_API_KEY"),
+		BaseURL: os.Getenv("MOESIF_BASE_URL"),
+	})
+	mux.HandleFunc("GET /apim/events", handler.APIMEvents(apimClient))
 
 	emailGenerator := emailpkg.NewClient(emailpkg.Config{
 		APIKey: os.Getenv("ANTHROPIC_API_KEY"),

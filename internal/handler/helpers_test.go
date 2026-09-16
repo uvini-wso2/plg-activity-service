@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 
+	"github.com/uvini-wso2/plg-activity-service/internal/apim"
 	"github.com/uvini-wso2/plg-activity-service/internal/email"
 	"github.com/uvini-wso2/plg-activity-service/internal/moesif"
 )
@@ -38,6 +39,21 @@ func (m *mockGenerator) Generate(p email.Prompt) (string, error) {
 	m.LastCall = p
 	if m.Err != nil {
 		return "", m.Err
+	}
+	return m.Response, nil
+}
+
+// mockAPIMClient is a test double for apimClient.
+type mockAPIMClient struct {
+	Response     apim.SearchResponse
+	Err          error
+	LastCriteria apim.FilterCriteria
+}
+
+func (m *mockAPIMClient) Search(criteria apim.FilterCriteria) (apim.SearchResponse, error) {
+	m.LastCriteria = criteria
+	if m.Err != nil {
+		return apim.SearchResponse{}, m.Err
 	}
 	return m.Response, nil
 }
