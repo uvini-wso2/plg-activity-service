@@ -12,6 +12,15 @@ const (
 	ActionNameProjectCreatedStart       = "Project-Created-Start"
 	ActionNameComponentCreatedStart     = "Component-Created-Start"
 	ActionNameQuickStartSelectedProduct = "QuickStart-Selected-Product"
+
+	// Additional confirmed real action names (2026-09-21), not yet wired
+	// into classification below — kept as reference:
+	//   ActionNamePortalViewedHome    = "Portal-Viewed-Home"    // CONFIRMED duplicate of home-page-visit, same event fires both
+	//   ActionNameHomePageVisit       = "home-page-visit"       // see above
+	//   ActionNameLandingSignInViewed = "Landing-SignIn-Viewed" // viewed sign-in page, didn't necessarily attempt
+	//   ActionNameLandingSignInFailed = "Landing-SignIn-Failed" // a failed login attempt — possible future signal for "Explicit Need for Assistance"
+	//   ActionNameLandingViewedPage   = "Landing-Viewed-Page"   // wso2.com marketing page view, pre-signup
+	//   ActionNameAPIInvoked         = "API-Invoked"            // a real API call by the customer's own app — PROPOSED as the real "meaningful activity" signal, pending team confirmation (2026-09-21)
 )
 
 // sriLankaLocation / timeOutputLayout: same Sri Lanka display convention
@@ -34,10 +43,11 @@ const timeOutputLayout = "January 2, 2006 3:04 PM"
 // Asgardeo's ProductActivity per team decision (2026-09-09) — different
 // products, different concepts.
 type ProductActivity struct {
-	SignedIn          bool `json:"signedIn"`
-	ProjectCreated    bool `json:"projectCreated"`
-	ComponentCreated  bool `json:"componentCreated"`
-	QuickStartSkipped bool `json:"quickStartSkipped"`
+	SignedIn                  bool `json:"signedIn"`
+	ProjectCreated            bool `json:"projectCreated"`
+	ComponentCreated          bool `json:"componentCreated"`
+	QuickStartSkipped         bool `json:"quickStartSkipped"`
+	QuickStartSelectedProduct bool `json:"quickStartSelectedProduct"`
 	// HasMeaningfulActivity uses a simple request-count threshold (400+),
 	// confirmed by the team (2026-09-18) — she describes this as "all api
 	// requests being invoked" through the platform. STILL AN OPEN GAP: our
@@ -94,6 +104,8 @@ func Normalize(hits []RawHit, total int) Summary {
 			summary.ProductActivity.ComponentCreated = true
 		case ActionNameQuickStartSkipped:
 			summary.ProductActivity.QuickStartSkipped = true
+		case ActionNameQuickStartSelectedProduct:
+			summary.ProductActivity.QuickStartSelectedProduct = true
 		}
 
 		eventTime, timeErr := parseAPIMTime(src.Request.Time)

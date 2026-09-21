@@ -117,3 +117,21 @@ func TestNormalize_NoEvents(t *testing.T) {
 		t.Errorf("expected EventsFound = 0, got %d", summary.EventsFound)
 	}
 }
+
+func TestNormalize_QuickStartSelectedProduct(t *testing.T) {
+	hits := []RawHit{
+		{
+			Source: RawSource{
+				CompanyID:  "company_789",
+				ActionName: ActionNameQuickStartSelectedProduct,
+				Request:    RawRequest{Time: "2026-09-14T08:30:00.000"},
+			},
+		},
+	}
+
+	summary := Normalize(hits, 1)
+
+	if !summary.ProductActivity.QuickStartSelectedProduct {
+		t.Error("expected ProductActivity.QuickStartSelectedProduct = true")
+	}
+}
