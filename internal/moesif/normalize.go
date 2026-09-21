@@ -39,9 +39,9 @@ var sriLankaLocation = func() *time.Location {
 	return loc
 }()
 
-// timeOutputLayout includes a numeric UTC offset (e.g. +05:30) rather
-// than "Z", since output is no longer plain UTC.
-const timeOutputLayout = "2006-01-02T15:04:05-07:00"
+// timeOutputLayout: human-readable format per team decision (2026-09-16),
+// e.g. "September 14, 2026 2:30 PM"
+const timeOutputLayout = "January 2, 2006 3:04 PM"
 
 // ProductActivity holds signals specific to THIS product (Asgardeo).
 type ProductActivity struct {

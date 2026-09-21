@@ -48,9 +48,9 @@ func TestNormalize_BasicFields(t *testing.T) {
 	if summary.EventsFound != 3 {
 		t.Errorf("expected EventsFound = 3 (the real Moesif total, not len(hits)), got %d", summary.EventsFound)
 	}
-	// 09:00 UTC -> 14:30 Sri Lanka time.
-	if summary.LastActivity != "2026-09-14T14:30:00+05:30" {
-		t.Errorf("expected LastActivity = 2026-09-14T14:30:00+05:30, got %q", summary.LastActivity)
+	// 09:00 UTC -> 2:30 PM Sri Lanka time.
+	if summary.LastActivity != "September 14, 2026 2:30 PM" {
+		t.Errorf("expected LastActivity = September 14, 2026 2:30 PM, got %q", summary.LastActivity)
 	}
 }
 
@@ -74,18 +74,18 @@ func TestNormalize_IsWSO2User(t *testing.T) {
 }
 
 func TestNormalize_MeaningfulActivity_AboveThreshold(t *testing.T) {
-	summary := Normalize([]RawHit{}, 500)
+	summary := Normalize([]RawHit{}, 400)
 
 	if !summary.ProductActivity.HasMeaningfulActivity {
-		t.Error("expected HasMeaningfulActivity = true at exactly 500 (threshold is inclusive)")
+		t.Error("expected HasMeaningfulActivity = true at exactly 400 (threshold is inclusive)")
 	}
 }
 
 func TestNormalize_MeaningfulActivity_BelowThreshold(t *testing.T) {
-	summary := Normalize([]RawHit{}, 499)
+	summary := Normalize([]RawHit{}, 399)
 
 	if summary.ProductActivity.HasMeaningfulActivity {
-		t.Error("expected HasMeaningfulActivity = false at 499 (below threshold)")
+		t.Error("expected HasMeaningfulActivity = false at 399 (below threshold)")
 	}
 }
 

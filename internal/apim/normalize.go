@@ -26,7 +26,9 @@ var sriLankaLocation = func() *time.Location {
 	return loc
 }()
 
-const timeOutputLayout = "2006-01-02T15:04:05-07:00"
+// timeOutputLayout: human-readable format per team decision (2026-09-16),
+// e.g. "September 14, 2026 2:30 PM"
+const timeOutputLayout = "January 2, 2006 3:04 PM"
 
 // ProductActivity holds signals specific to APIM. Distinct shape from
 // Asgardeo's ProductActivity per team decision (2026-09-09) — different
@@ -36,12 +38,14 @@ type ProductActivity struct {
 	ProjectCreated    bool `json:"projectCreated"`
 	ComponentCreated  bool `json:"componentCreated"`
 	QuickStartSkipped bool `json:"quickStartSkipped"`
-	// HasMeaningfulActivity uses a simple request-count threshold for now
-	// (500+), per team decision (2026-09-16) — ASSUMPTION (not yet
-	// confirmed): counts ALL events found, including any non-product
-	// tracking/telemetry noise, since real per-product filtering wasn't
-	// specified. To be refined based on which components were configured,
-	// per the team's own stated plan.
+	// HasMeaningfulActivity uses a simple request-count threshold (400+),
+	// confirmed by the team (2026-09-18) — she describes this as "all api
+	// requests being invoked" through the platform. STILL AN OPEN GAP: our
+	// raw-data investigation found eventsFound also includes non-API-
+	// request items (ad tracking pixels, telemetry pings) — worth
+	// confirming whether she's aware of this, or whether it needs
+	// filtering. To be refined further based on which components were
+	// configured, per her own stated plan.
 	HasMeaningfulActivity bool `json:"hasMeaningfulActivity"`
 }
 
@@ -59,9 +63,11 @@ type Summary struct {
 	EventsFound      int             `json:"eventsFound"`
 }
 
-// meaningfulActivityThreshold: see HasMeaningfulActivity's doc comment
-// above for the assumption this rests on.
-const meaningfulActivityThreshold = 500
+// invoked through the platform. See HasMeaningfulActivity's doc comment
+// for a caveat: our RAW data investigation found eventsFound also
+// includes non-API-request items (ad tracking pixels, telemetry pings),
+// which may not match what she has in mind — worth confirming.
+const meaningfulActivityThreshold = 400
 
 // Normalize aggregates raw APIM hits (already filtered to a single
 // company/user) into a Summary.

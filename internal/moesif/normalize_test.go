@@ -61,14 +61,15 @@ func TestNormalize(t *testing.T) {
 	if summary.OrganizationName != "test-org" {
 		t.Errorf("expected OrganizationName = test-org, got %q", summary.OrganizationName)
 	}
-	// Times are shown in Sri Lankan time (UTC+5:30) per team decision
-	// (2026-09-16) — source times were UTC, so 09:00 -> 14:30 and
-	// 08:20 -> 13:50.
-	if summary.FirstSeen != "2026-08-15T14:30:00+05:30" {
-		t.Errorf("expected FirstSeen = 2026-08-15T14:30:00+05:30 (Sri Lanka time), got %q", summary.FirstSeen)
+
+	// Times are shown in Sri Lankan time, human-readable format, per team
+	// decision (2026-09-16) — source times were UTC, so 09:00 -> 2:30 PM
+	// and 08:20 -> 1:50 PM.
+	if summary.FirstSeen != "August 15, 2026 2:30 PM" {
+		t.Errorf("expected FirstSeen = August 15, 2026 2:30 PM (Sri Lanka time), got %q", summary.FirstSeen)
 	}
-	if summary.LastActivity != "2026-08-31T13:50:00+05:30" {
-		t.Errorf("expected LastActivity = 2026-08-31T13:50:00+05:30 (Sri Lanka time), got %q", summary.LastActivity)
+	if summary.LastActivity != "August 31, 2026 1:50 PM" {
+		t.Errorf("expected LastActivity = August 31, 2026 1:50 PM (Sri Lanka time), got %q", summary.LastActivity)
 	}
 
 	if !summary.ProductActivity.ApplicationCreated {
@@ -102,12 +103,12 @@ func TestNormalize_SingleEvent(t *testing.T) {
 
 	summary := Normalize(hits)
 
-	// 09:00 UTC -> 14:30 Sri Lanka time.
-	if summary.FirstSeen != "2026-08-15T14:30:00+05:30" {
-		t.Errorf("expected FirstSeen = 2026-08-15T14:30:00+05:30 (Sri Lanka time), got %q", summary.FirstSeen)
+	// 09:00 UTC -> 2:30 PM Sri Lanka time.
+	if summary.FirstSeen != "August 15, 2026 2:30 PM" {
+		t.Errorf("expected FirstSeen = August 15, 2026 2:30 PM (Sri Lanka time), got %q", summary.FirstSeen)
 	}
-	if summary.LastActivity != "2026-08-15T14:30:00+05:30" {
-		t.Errorf("expected LastActivity = 2026-08-15T14:30:00+05:30 (Sri Lanka time), got %q", summary.LastActivity)
+	if summary.LastActivity != "August 15, 2026 2:30 PM" {
+		t.Errorf("expected LastActivity = August 15, 2026 2:30 PM (Sri Lanka time), got %q", summary.LastActivity)
 	}
 	if summary.ProductActivity.SkippedStepNumber == nil {
 		t.Error("expected SkippedStepNumber to be set")

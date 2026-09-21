@@ -71,7 +71,7 @@ func TestAPIMEvents_MoesifError(t *testing.T) {
 
 func TestAPIMEvents_MeaningfulActivityThreshold(t *testing.T) {
 	mock := &mockAPIMClient{
-		Response: apim.SearchResponse{Result: apim.HitsResult{Hits: []apim.RawHit{}, Total: 500}},
+		Response: apim.SearchResponse{Result: apim.HitsResult{Hits: []apim.RawHit{}, Total: 400}},
 	}
 	req := httptest.NewRequest(http.MethodGet, "/apim/events?company_id=company_789", nil)
 	rec := httptest.NewRecorder()
