@@ -31,14 +31,12 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler)
-	mux.HandleFunc("GET /events", handler.Events(client))
 	mux.HandleFunc("GET /validate", handler.Validate(client))
 
 	apimClient := apim.NewClient(apim.Config{
 		APIKey:  os.Getenv("APIM_MOESIF_API_KEY"),
 		BaseURL: os.Getenv("MOESIF_BASE_URL"),
 	})
-	mux.HandleFunc("GET /apim/events", handler.APIMEvents(apimClient))
 
 	emailGenerator := emailpkg.NewClient(emailpkg.Config{
 		APIKey: os.Getenv("ANTHROPIC_API_KEY"),
@@ -46,6 +44,19 @@ func main() {
 	})
 	mux.HandleFunc("GET /generate-email", handler.GenerateEmail(client, emailGenerator))
 
+	// Raw activity endpoints (/events, /apim/events) are internal-only per
+	// team direction (2026-09-16): only /validate and /generate-email
+	// should be publicly exposed. Kept available locally for
+	// testing/debugging via ENABLE_RAW_ACTIVITY_ROUTES=true in .env — omit
+	// it (or set to anything else) on any real deployment to keep them
+	// off. NOTE: /apim/events is currently the ONLY way to retrieve APIM
+	// data at all (no APIM /validate equivalent exists yet) — revisit
+	// this once that's built.
+	if os.Getenv("ENABLE_RAW_ACTIVITY_ROUTES") == "true" {
+		mux.HandleFunc("GET /events", handler.Events(client))
+		mux.HandleFunc("GET /apim/events", handler.APIMEvents(apimClient))
+		slog.Info("raw activity routes enabled (local/testing only)")
+	}
 	slog.Info("starting server", "port", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		slog.Error("server failed", "error", err)
