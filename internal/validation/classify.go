@@ -21,7 +21,7 @@ func Classify(ec EmailClassification, summary moesif.Summary) Result {
 		return Result{Outcome: OutcomeExcluded, Tags: []string{TagDisposableDomain}}
 	}
 
-	if isWSO2Domain(ec.Domain) {
+	if IsWSO2Domain(ec.Domain) {
 		return Result{Outcome: OutcomeExcluded, Tags: []string{TagWSO2Domain}}
 	}
 

@@ -10,7 +10,7 @@ var wso2Domains = []string{
 	"wso2.com",
 }
 
-func isWSO2Domain(domain string) bool {
+func IsWSO2Domain(domain string) bool {
 	domain = strings.ToLower(domain)
 	for _, d := range wso2Domains {
 		if domain == d {
