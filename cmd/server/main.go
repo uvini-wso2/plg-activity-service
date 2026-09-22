@@ -37,6 +37,7 @@ func main() {
 		APIKey:  os.Getenv("APIM_MOESIF_API_KEY"),
 		BaseURL: os.Getenv("MOESIF_BASE_URL"),
 	})
+	mux.HandleFunc("GET /apim/validate", handler.APIMValidate(apimClient))
 
 	emailGenerator := emailpkg.NewClient(emailpkg.Config{
 		APIKey: os.Getenv("ANTHROPIC_API_KEY"),
