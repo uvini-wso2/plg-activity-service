@@ -27,13 +27,14 @@ type RawHit struct {
 // isWSO2User flag (Asgardeo has no equivalent — we infer via domain
 // instead).
 type RawSource struct {
-	CompanyID  string     `json:"company_id"`
-	UserID     string     `json:"user_id"`
-	EventType  string     `json:"event_type"` // observed: "user_action" on named events
-	ActionName string     `json:"action_name"`
-	Request    RawRequest `json:"request"`
-	Company    RawCompany `json:"company"`
-	User       RawUser    `json:"user"`
+	CompanyID  string      `json:"company_id"`
+	UserID     string      `json:"user_id"`
+	EventType  string      `json:"event_type"` // observed: "user_action" on named events
+	ActionName string      `json:"action_name"`
+	Request    RawRequest  `json:"request"`
+	Company    RawCompany  `json:"company"`
+	User       RawUser     `json:"user"`
+	Metadata   RawMetadata `json:"metadata"`
 }
 
 type RawRequest struct {
@@ -67,4 +68,22 @@ type RawUser struct {
 // from checking the email domain instead.
 type RawUserMetadata struct {
 	IsWSO2User string `json:"isWSO2User"`
+}
+
+// RawMetadata holds event-specific metadata, confirmed by the team
+// (2026-09-22) to carry these fields on specific quick-start events:
+//   - QuickStart-Attempted-Source: Method
+//   - QuickStart-Validation: Source, Outcome
+//   - QuickStart-Selected-Source: Source
+//
+// DeploymentModel (from QuickStart-Selected-Product, the "SAS" vs
+// "gateway" choice) is NOT YET CONFIRMED — the real field name it lives
+// under wasn't specified in the meeting. This is a PLACEHOLDER guess,
+// not verified against real data. Confirm the actual field name before
+// relying on this.
+type RawMetadata struct {
+	Method          string `json:"method"`
+	Source          string `json:"source"`
+	Outcome         string `json:"outcome"`
+	DeploymentModel string `json:"deployment_model"` // UNCONFIRMED field name
 }

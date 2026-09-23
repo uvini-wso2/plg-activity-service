@@ -3,30 +3,38 @@ package apim
 import "time"
 
 // Action name values for APIM's "action_name" field — CONFIRMED real
-// values shared by the team (2026-09-16). Only a subset are currently
-// wired into Normalize()'s classification below; the rest are kept here
-// as confirmed reference for when we build them in.
+// values, expanded per team decision (2026-09-22). Fields marked "not
+// wired in" below are kept as reference only.
 const (
-	ActionNameLandingSignInSucceeded    = "Landing-SignIn-Succeeded"
-	ActionNameQuickStartSkipped         = "QuickStart-Skipped"
-	ActionNameProjectCreatedStart       = "Project-Created-Start"
-	ActionNameComponentCreatedStart     = "Component-Created-Start"
-	ActionNameQuickStartSelectedProduct = "QuickStart-Selected-Product"
+	ActionNameLandingSignInSucceeded = "Landing-SignIn-Succeeded"
+	ActionNameQuickStartSkipped      = "QuickStart-Skipped"
 
-	// Additional confirmed real action names (2026-09-21), not yet wired
-	// into classification below — kept as reference:
-	//   ActionNamePortalViewedHome    = "Portal-Viewed-Home"    // CONFIRMED duplicate of home-page-visit, same event fires both
-	//   ActionNameHomePageVisit       = "home-page-visit"       // see above
-	//   ActionNameLandingSignInViewed = "Landing-SignIn-Viewed" // viewed sign-in page, didn't necessarily attempt
-	//   ActionNameLandingSignInFailed = "Landing-SignIn-Failed" // a failed login attempt — possible future signal for "Explicit Need for Assistance"
-	//   ActionNameLandingViewedPage   = "Landing-Viewed-Page"   // wso2.com marketing page view, pre-signup
-	//   ActionNameAPIInvoked         = "API-Invoked"            // a real API call by the customer's own app — PROPOSED as the real "meaningful activity" signal, pending team confirmation (2026-09-21)
+	// Confirmed real, but explicitly NOT tracked in ProductActivity per
+	// team decision (2026-09-22) — kept as reference only:
+	//   ActionNameLandingSignUpSucceeded = "Landing-SignUp-Succeeded"
+	//   ActionNamePortalViewedHome        = "Portal-Viewed-Home"
+	//   ActionNameHomePageVisit           = "home-page-visit"
+	//   ActionNameProjectCreatedStart     = "Project-Created-Start"
+	//   ActionNameLandingSignInViewed     = "Landing-SignIn-Viewed"
+	//   ActionNameLandingSignInFailed     = "Landing-SignIn-Failed"
+	//   ActionNameLandingViewedPage       = "Landing-Viewed-Page"
+	//   ActionNameAPIInvoked              = "API-Invoked" // still under investigation by the team
+
+	ActionNameQuickStartSelectedProduct = "QuickStart-Selected-Product"
+	ActionNameComponentCreatedStart     = "Component-Created-Start"
+	ActionNameComponentCreatedEnd       = "Component-Created-End"
+	ActionNameQuickStartAttemptedSource = "QuickStart-Attempted-Source"
+	ActionNameQuickStartValidation      = "QuickStart-Validation"
+	ActionNameQuickStartSelectedSource  = "QuickStart-Selected-Source"
+	ActionNameGatewayActivated          = "Gateway-Activated"
+	ActionNameComponentDeployed         = "Component-Deployed"
+	ActionNameComponentTested           = "Component-Tested"
+	ActionNameComponentPromoted         = "Component-Promoted"
+	ActionNameComponentGeneratedKey     = "Component-Generated-Key"
 )
 
 // sriLankaLocation / timeOutputLayout: same Sri Lanka display convention
-// as internal/moesif (team decision, 2026-09-16) — kept as a separate
-// copy in this package rather than importing internal/moesif, since the
-// two products are meant to stay independently buildable.
+// as internal/moesif (team decision, 2026-09-16).
 var sriLankaLocation = func() *time.Location {
 	loc, err := time.LoadLocation("Asia/Colombo")
 	if err != nil {
@@ -35,33 +43,46 @@ var sriLankaLocation = func() *time.Location {
 	return loc
 }()
 
-// timeOutputLayout: human-readable format per team decision (2026-09-16),
-// e.g. "September 14, 2026 2:30 PM"
 const timeOutputLayout = "January 2, 2006 3:04 PM"
 
-// ProductActivity holds signals specific to APIM. Distinct shape from
-// Asgardeo's ProductActivity per team decision (2026-09-09) — different
-// products, different concepts.
+// ProductActivity holds signals specific to APIM. Redefined per team
+// decision (2026-09-22) — see normalize_test.go for confirmed behavior of
+// each field.
 type ProductActivity struct {
-	SignedIn                  bool `json:"signedIn"`
-	ProjectCreated            bool `json:"projectCreated"`
-	ComponentCreated          bool `json:"componentCreated"`
-	QuickStartSkipped         bool `json:"quickStartSkipped"`
+	// QuickStartCompleted: renamed + INVERTED from the old
+	// "QuickStartSkipped" (2026-09-22) — true when NO skip event exists
+	// (they went through fully), false when a skip event IS present.
+	QuickStartCompleted bool `json:"quickStartCompleted"`
+
 	QuickStartSelectedProduct bool `json:"quickStartSelectedProduct"`
-	// HasMeaningfulActivity uses a simple request-count threshold (400+),
-	// confirmed by the team (2026-09-18) — she describes this as "all api
-	// requests being invoked" through the platform. STILL AN OPEN GAP: our
-	// raw-data investigation found eventsFound also includes non-API-
-	// request items (ad tracking pixels, telemetry pings) — worth
-	// confirming whether she's aware of this, or whether it needs
-	// filtering. To be refined further based on which components were
-	// configured, per her own stated plan.
+	// DeploymentModel: from QuickStart-Selected-Product's metadata — see
+	// RawMetadata.DeploymentModel's doc comment; field name UNCONFIRMED.
+	DeploymentModel string `json:"deploymentModel,omitempty"`
+
+	// APICreated is true ONLY when BOTH Component-Created-Start AND
+	// Component-Created-End are present — confirmed by the team
+	// (2026-09-22): "if both these events are there we take it as API is
+	// created."
+	APICreated bool `json:"apiCreated"`
+
+	AttemptedSourceMethod string `json:"attemptedSourceMethod,omitempty"`
+	ValidationSource      string `json:"validationSource,omitempty"`
+	ValidationOutcome     string `json:"validationOutcome,omitempty"`
+	SelectedSource        string `json:"selectedSource,omitempty"`
+
+	GatewayActivated      bool `json:"gatewayActivated"`
+	ComponentDeployed     bool `json:"componentDeployed"`
+	ComponentTested       bool `json:"componentTested"`
+	ComponentPromoted     bool `json:"componentPromoted"`
+	ComponentKeyGenerated bool `json:"componentKeyGenerated"`
+
+	// HasMeaningfulActivity: threshold confirmed 400 (2026-09-18), but
+	// WHAT is counted is still unresolved as of 2026-09-22 — currently
+	// counts every event Moesif returns, including confirmed tracking
+	// noise and duplicate events. See README for details.
 	HasMeaningfulActivity bool `json:"hasMeaningfulActivity"`
 }
 
-// Summary is APIM's normalized signal set. Parent-level fields (name,
-// tenure, location) stay consistent with Asgardeo's Summary shape, per
-// team decision (2026-09-09) that these fields are shared across products.
 type Summary struct {
 	OrganizationName string          `json:"organizationName,omitempty"`
 	FirstSeen        string          `json:"firstSeen"`
@@ -73,10 +94,6 @@ type Summary struct {
 	EventsFound      int             `json:"eventsFound"`
 }
 
-// invoked through the platform. See HasMeaningfulActivity's doc comment
-// for a caveat: our RAW data investigation found eventsFound also
-// includes non-API-request items (ad tracking pixels, telemetry pings),
-// which may not match what she has in mind — worth confirming.
 const meaningfulActivityThreshold = 400
 
 // Normalize aggregates raw APIM hits (already filtered to a single
@@ -84,6 +101,7 @@ const meaningfulActivityThreshold = 400
 func Normalize(hits []RawHit, total int) Summary {
 	var summary Summary
 	var earliest, latest time.Time
+	var quickStartSkipped, componentCreatedStart, componentCreatedEnd bool
 
 	for _, hit := range hits {
 		src := hit.Source
@@ -96,16 +114,34 @@ func Normalize(hits []RawHit, total int) Summary {
 		}
 
 		switch src.ActionName {
-		case ActionNameLandingSignInSucceeded:
-			summary.ProductActivity.SignedIn = true
-		case ActionNameProjectCreatedStart:
-			summary.ProductActivity.ProjectCreated = true
-		case ActionNameComponentCreatedStart:
-			summary.ProductActivity.ComponentCreated = true
 		case ActionNameQuickStartSkipped:
-			summary.ProductActivity.QuickStartSkipped = true
+			quickStartSkipped = true
 		case ActionNameQuickStartSelectedProduct:
 			summary.ProductActivity.QuickStartSelectedProduct = true
+			if src.Metadata.DeploymentModel != "" {
+				summary.ProductActivity.DeploymentModel = src.Metadata.DeploymentModel
+			}
+		case ActionNameComponentCreatedStart:
+			componentCreatedStart = true
+		case ActionNameComponentCreatedEnd:
+			componentCreatedEnd = true
+		case ActionNameQuickStartAttemptedSource:
+			summary.ProductActivity.AttemptedSourceMethod = src.Metadata.Method
+		case ActionNameQuickStartValidation:
+			summary.ProductActivity.ValidationSource = src.Metadata.Source
+			summary.ProductActivity.ValidationOutcome = src.Metadata.Outcome
+		case ActionNameQuickStartSelectedSource:
+			summary.ProductActivity.SelectedSource = src.Metadata.Source
+		case ActionNameGatewayActivated:
+			summary.ProductActivity.GatewayActivated = true
+		case ActionNameComponentDeployed:
+			summary.ProductActivity.ComponentDeployed = true
+		case ActionNameComponentTested:
+			summary.ProductActivity.ComponentTested = true
+		case ActionNameComponentPromoted:
+			summary.ProductActivity.ComponentPromoted = true
+		case ActionNameComponentGeneratedKey:
+			summary.ProductActivity.ComponentKeyGenerated = true
 		}
 
 		eventTime, timeErr := parseAPIMTime(src.Request.Time)
@@ -121,6 +157,9 @@ func Normalize(hits []RawHit, total int) Summary {
 		}
 	}
 
+	summary.ProductActivity.QuickStartCompleted = !quickStartSkipped
+	summary.ProductActivity.APICreated = componentCreatedStart && componentCreatedEnd
+
 	if !latest.IsZero() {
 		summary.LastActivity = latest.In(sriLankaLocation).Format(timeOutputLayout)
 	}
@@ -134,8 +173,6 @@ func Normalize(hits []RawHit, total int) Summary {
 	return summary
 }
 
-// parseAPIMTime parses APIM's observed request.time format — CONFIRMED
-// same "no timezone suffix" shape as Asgardeo's (2026-09-16).
 func parseAPIMTime(raw string) (time.Time, error) {
 	return time.Parse("2006-01-02T15:04:05.000", raw)
 }
