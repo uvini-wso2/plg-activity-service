@@ -1,52 +1,150 @@
-Set this in your local `.env` to enable them; omit it (or set it to anything else) on any real deployment.
+# PLG Activity Service
 
-**Important caveat:** `/apim/events` is currently the **only** way to retrieve APIM data at all — there is no APIM equivalent of `/validate` yet. Gating this off removes real functionality until APIM's own validation logic is built (see "Known limitations" below).
+A Go HTTP service that retrieves and interprets product activity from Moesif, across multiple SaaS products, for use in the PLG (Product-Led Growth) outreach tool. It answers two questions for a CS engineer: *what has this account actually done in the product*, and *is this prospect worth reaching out to*.
 
-### `GET /events` (Asgardeo)
+**Status:** Asgardeo and APIM both fully built — activity retrieval, validation/classification, tested, and verified against real data. Phase 03 (email generation) is built and tested with mocks, blocked only on real Claude API access.
 
-| Param | Required? |
-|---|---|
-| `company_id` | One of `company_id`/`user_id` required |
-| `user_id` | One of `company_id`/`user_id` required |
+---
 
-**Response fields:**
+## Quick start
 
-| Field | Meaning |
-|---|---|
-| `organizationName` | Best-effort, from `company.metadata.account_name` on whichever event carries it |
-| `firstSeen` / `lastActivity` | Human-readable, always shown in **Sri Lankan time** (`Asia/Colombo`), regardless of where the prospect actually is — per team decision (2026-09-16), since the CS team operating this is based in Sri Lanka. Format: `"September 14, 2026 2:30 PM"`. |
-| `timezone` / `countryName` | The *prospect's own* location, from `request.geo_ip` on the most recent event — separate from the display-time convention above |
-| `eventsFound` | Moesif's true total matching event count. `0` means no data exists for this identifier at all. |
+```bash
+go mod tidy
+cp .env.example .env   # then fill in your real keys — see "Environment variables" below
+go run ./cmd/server/main.go
+```
+
+Server starts on port 8081 by default.
+
+```bash
+curl "http://localhost:8081/validate?company_id=<a-real-company-id>&domain=gmail.com&category=personal"
+```
+
+Run the tests:
+```bash
+go test ./... -v
+```
+
+---
+
+## Public API (exposed to the PLG portal)
+
+Per team decision (2026-09-16), only these are meant to be publicly reachable. Raw per-product activity endpoints are internal-only (see below).
+
+### `GET /validate` — Asgardeo
+
+Combines Asgardeo Moesif activity with an email classification result to decide whether a prospect is worth CS outreach.
+
+**Query parameters:**
+
+| Param | Required? | Notes |
+|---|---|---|
+| `company_id` | One of `company_id`/`user_id` required | Moesif company identifier |
+| `user_id` | One of `company_id`/`user_id` required | Moesif user identifier. Not always a UUID. |
+| `domain` | **Required** | The email's domain — used for the WSO2-domain exclusion check |
+| `category` | **Required** | `corporate`, `personal`, `disposable`, or `provider_testing` |
+| `email` | **Optional** | Carried through for context only — never used in any actual rule |
+
+**Classification rules, applied in this exact order:**
+
+1. **Disposable email → Excluded**, unconditionally.
+2. **`provider_testing` → Excluded**, tagged `Invalid Email` (confirmed invalid, not treated like personal).
+3. **WSO2 domain (`wso2.com`) → Excluded.** Runs *before* the corporate check.
+4. **Corporate → Eligible**, unconditionally.
+5. **Personal → Eligible only with meaningful activity** — created an application, or started onboarding and stopped at an identifiable step.
+6. **Everything else → Monitored.**
 
 **`productActivity` (Asgardeo-specific):**
 
 | Field | Meaning |
 |---|---|
-| `applicationCreated` | `true` if at least one onboarding step was completed |
-| `hasCompletedOnboarding` | `true` only on a genuine `Onboarding-Completed` event — the *entire* wizard finished, not just one step. Distinct from `applicationCreated`. |
-| `skippedStepNumber` | Step number of the most recent skip, if any. `null` means never skipped — a pointer, since step `0` is a real, valid step and must not be confused with "no skip." |
-| `skippedStepName` | Human-readable name matching `skippedStepNumber`. Omitted entirely if no skip occurred. |
-| `onboardingSetupType` | From `metadata.wizard_path` — confirmed real values `"full_setup"` and `"preview"`. |
+| `applicationCreated` | At least one onboarding step completed |
+| `hasCompletedOnboarding` | The *entire* onboarding wizard finished (real `Onboarding-Completed` event) — distinct from `applicationCreated` |
+| `skippedStepNumber` / `skippedStepName` | The step where onboarding was abandoned. `null` means never skipped — a real, valid step 0 must not be confused with "no skip" |
+| `onboardingSetupType` | `"full_setup"` or `"preview"` |
 
-### `GET /apim/events` (APIM / api-platform, "Bijira")
+### `GET /apim/validate` — APIM (api-platform / "Bijira")
 
-Same `company_id`/`user_id` parameters as above.
+Same parameter shape as `/validate` above. Reuses the same `Outcome`/`Tag` structure and the same corporate/disposable/provider_testing/WSO2-domain rules — **only the meaningful-activity signal differs per product** (confirmed with the team, 2026-09-22). WSO2-internal detection uses the same domain-based check as Asgardeo (no product-specific flag — see "Design decisions" below).
 
-**Response fields:** same parent shape as Asgardeo (`organizationName`, `firstSeen`, `lastActivity`, `timezone`, `countryName`, `eventsFound`), plus:
-
-| Field | Meaning |
-|---|---|
-| `isWSO2User` | Direct boolean signal from `user.metadata.isWSO2User` — confirms whether this is an internal WSO2 account. Unlike Asgardeo, APIM provides this directly rather than requiring a domain check. |
-
-**`productActivity` (APIM-specific):**
+**`productActivity` (APIM-specific), redefined 2026-09-22/24:**
 
 | Field | Meaning |
 |---|---|
-| `signedIn` | `true` on a real `Landing-SignIn-Succeeded` event — confirmed real auth tracking, which Asgardeo does **not** have |
-| `projectCreated` | `true` on `Project-Created-Start` |
-| `componentCreated` | `true` on `Component-Created-Start` |
-| `quickStartSkipped` | `true` on `QuickStart-Skipped` |
-| `hasMeaningfulActivity` | `true` if `eventsFound >= 400`. Confirmed threshold, team decision (2026-09-18, via Slack). **Known open issue:** this currently counts every event Moesif returns, including non-product tracking/telemetry noise (ad pixels, session-recording pings) — not filtered to genuine API usage. Flagged to the team; not yet resolved. |
+| `quickStartCompleted` | `true` when NO `QuickStart-Skipped` event exists (they went through fully) |
+| `quickStartSelectedProduct` | They picked a product during quick-start |
+| `deploymentModel` | e.g. `"saas"` — from `QuickStart-Selected-Product` metadata. **Confirmed real (2026-09-23).** |
+| `context` | A separate metadata value on the same event, alongside `deploymentModel`. **New (2026-09-24), field name not yet verified against real data.** |
+| `apiCreated` | `true` only when **both** `Component-Created-Start` AND `Component-Created-End` are present |
+| `attemptedSourceMethod` | e.g. `"sample"`, `"uploaded"` — **confirmed real.** |
+| `validationSource` / `validationOutcome` | From `QuickStart-Validation`. **Unverified** — this event has never fired for anyone in a full year of real data. |
+| `selectedSource` | e.g. `"sample"`, `"own"` — **confirmed real.** |
+| `gatewayActivated`, `componentDeployed`, `componentTested`, `componentPromoted`, `componentKeyGenerated` | Real product-building lifecycle stages — all **confirmed real** against live accounts. |
+| `apiInvokedCount` | How many real `API-Invoked` events this account has (within the fetched window — see pagination note below) |
+| `hasMeaningfulActivity` | `true` if `apiInvokedCount >= 400`. **Redefined 2026-09-24** — previously compared raw `eventsFound` to 400/500; now counts only genuine API calls. See "Confirmed real findings" below for why this mattered. |
+
+### `GET /generate-email`
+
+Runs the same pipeline as `/validate`, then feeds the result into Claude to produce a personalized outreach email. Skips generation for `Excluded` prospects.
+
+**Status: built and tested with mocks, not yet verified against the real Claude API** — access is pending; as an intern, direct approval is unlikely, so a shared team key may be needed instead.
+
+---
+
+## Internal/debug endpoints
+
+`GET /events` (Asgardeo) and `GET /apim/events` (APIM) return raw per-product activity directly, with no validation logic. **Not meant to be publicly exposed** — both `/validate` endpoints already call the same underlying functions directly and include the full activity summary in their own response.
+
+**Gated behind an environment variable, off by default:**
+
+Set locally for testing; omit on real deployments.
+
+**Caveat:** `/apim/events` is currently the only way to retrieve APIM data with no validation applied at all.
+
+---
+
+## Design decisions worth knowing
+
+### Why APIM's validation logic reuses Asgardeo's structure
+
+Confirmed directly with the team (2026-09-22): *"the classification logic is the same for all products."* Only the meaningful-activity signal is product-specific — everything else (`internal/validation.Classify`'s rule types, tags, outcomes) is shared.
+
+### Why `isWSO2User` was removed (2026-09-24)
+
+APIM's raw data has a direct `isWSO2User` flag that Asgardeo doesn't. It was initially used as an *extra* signal alongside domain-checking. Per team decision, this was removed — **all products now use the same domain-only check** (`internal/validation.IsWSO2Domain`), for consistency, even though APIM's direct flag would have been more reliable in theory.
+
+### Why APIM prefers `company_id` over `user_id`
+
+Per a live, controlled investigation by the team (2026-09-22): most of APIM's detailed console-driven events (component created/deployed/tested, quick-start funnel steps) are tagged with `company_id`, and some don't carry a `user_id` at all — so `company_id` is the more complete signal generally.
+
+**Known tension, not yet resolved:** we separately proved a real case (`aloyayribedding`, company `d2cc7cc8-62ab-4d96-91f8-a2bbada1e988`) where the opposite is true — specific `Component-Created-Start`/`-End` events for that account carry no `company_id` at all, so switching to `company_id`-only causes real activity to be missed that `user_id` alone would catch. Both findings are correct, about different events. A possible future fix: query both and merge results, rather than picking one. Flagged to the team, not yet decided.
+
+---
+
+## Confirmed real findings (data-quality investigations)
+
+These were discovered through direct, repeated investigation against real Moesif data — recorded here so the reasoning isn't lost.
+
+### The `eventsFound` metric was seriously misleading (RESOLVED for APIM)
+
+Two real accounts (`apimsaas`, `shopwaveorg`) showed `eventsFound` in the thousands (7988 and 4375 respectively) — but their real `apiInvokedCount` was **8 and 0** respectively. Nearly all of their raw event volume was tracking noise, duplicate events, or bot/monitoring traffic, not genuine product usage. This is why `hasMeaningfulActivity` was redefined to count `API-Invoked` events specifically (2026-09-24) rather than raw event totals.
+
+Confirmed contributing noise sources:
+- **Duplicate events**: a single page load can fire two separate logged events at the identical timestamp (e.g. `Portal-Viewed-Home` and `home-page-visit`).
+- **Bot/monitoring traffic**: repeated hits from the same datacenter IPs using a `moesif-nodejs` client (not a real browser), plus genuine third-party uptime-monitoring traffic (Site24x7) hitting a test account.
+- **Marketing/analytics tracking**: Application Insights telemetry, ad-tracking pixels, Google Analytics collection endpoints (`/g/collect`, `/pixel/collect`) all get logged as regular Moesif events.
+
+### `company_id`-only lookups can miss real activity (KNOWN LIMITATION, unresolved)
+
+See "Design decisions" above — some real events for some accounts simply aren't tagged with `company_id` at all.
+
+### `QuickStart-Validation` has never fired in real data
+
+Searched with exact match and broad wildcards, across a full year of data — zero occurrences anywhere in the dataset. `validationSource`/`validationOutcome` remain built exactly per the team's description, but genuinely unverifiable until someone triggers that specific "bring your own API" flow for real.
+
+### Real Moesif pagination cap
+
+`Search()` fetches up to 1000 events per query (10 pages × 100), sorted most-recent-first. For very high-volume accounts, older lifecycle events (e.g. an early `Component-Promoted`) can fall outside this window and simply not be counted — not a bug, a known tradeoff, same as Moesif's own guidance for interactive search vs. bulk export.
 
 ---
 
@@ -54,68 +152,40 @@ Same `company_id`/`user_id` parameters as above.
 
 ### Asgardeo
 
-- **Endpoint:** `POST https://api.moesif.com/search/~/search/events`, `Authorization: Bearer <key>`
-- Response nested under `hits.hits`/`hits.total` (Elasticsearch-style), not flat
-- The meaningful field is `action_name`, not `event_type` (always `"user_action"`)
-- **No authentication/login tracking at all** — confirmed across all four environments (Prod/Dev/Staging/Test)
-- `session_token` is literally the request's IP address, not a real session ID — no reliable per-session duration is possible from this data (this is also why there's no "average time per day" metric — it was removed by team decision, 2026-09-16)
-- Confirmed real `action_name` values include: `organization_created`, `user_created`, `organization_subscribed`, `Onboarding-Step-Completed`, `Onboarding-Started`, `Onboarding-Skipped`, `Onboarding-Completed`, `Onboarding-Step-Back`, plus several marketing/association events not currently used for classification
+- No authentication/login tracking at all, confirmed across all 4 environments.
+- `session_token` is literally the request's IP address, not a real session ID.
+- Real `action_name` values: `organization_created`, `user_created`, `organization_subscribed`, `Onboarding-Step-Completed`, `Onboarding-Started`, `Onboarding-Skipped`, `Onboarding-Completed`, `Onboarding-Step-Back`.
 
 ### APIM (api-platform / "Bijira")
 
-- Same Moesif API mechanics as Asgardeo (same envelope, same pagination), but its own separate credentials and Moesif app
-- **Real product URLs are `console.bijira.dev`** — worth confirming with the team whether "Bijira" is the actual internal product name and "APIM" is shorthand
-- Company name lives at `company.metadata.name` — **different field name** than Asgardeo's `account_name`
-- A large share of raw events are **not product activity at all** — Application Insights telemetry, LinkedIn ad tracking pixels, Microsoft Clarity session recordings all get captured as regular Moesif events
-- Confirmed real `action_name` values found so far: `Landing-SignIn-Succeeded`, `QuickStart-Skipped`, `Project-Created-Start`, `Component-Created-Start`, `QuickStart-Selected-Product` — **not yet a complete list**, worth pulling the full set from the dashboard
-- Has genuine authentication tracking (`Landing-SignIn-Succeeded`) — a real capability gap versus Asgardeo, not a universal limitation of Moesif itself
+- Real product URLs are `console.bijira.dev` — worth confirming "Bijira" is the actual internal name.
+- Company name lives at `company.metadata.name`, not `account_name` like Asgardeo.
+- **Does** have genuine auth tracking (`Landing-SignIn-Succeeded`) — a real capability Asgardeo lacks.
+- Confirmed real `action_name` values: `Landing-SignIn-Succeeded`, `QuickStart-Skipped`, `QuickStart-Selected-Product`, `Component-Created-Start`/`-End`, `QuickStart-Attempted-Source`, `QuickStart-Validation` (real name, never fires), `QuickStart-Selected-Source`, `Gateway-Activated`, `Component-Deployed`, `Component-Tested`, `Component-Promoted`, `Component-Generated-Key`, `API-Invoked`.
+- Confirmed real test accounts, useful for future verification: `shopwaveorg`, `apimsaas`, `aloyayribedding`, `unlimitechstore`, `jetbrains`.
 
 ---
 
 ## Architecture
 
-cmd/server/main.go — HTTP server, route registration (public vs. gated), .env loading
+cmd/server/main.go — HTTP server, route registration (public vs. gated)
 
 internal/moesif/ — Asgardeo integration
-client.go, filter.go Config/Client/Search(), paginated fetch
-types.go Raw Moesif response shapes
-normalize.go Raw events → Summary (org info, tenure, productActivity)
-
-internal/apim/ — APIM integration (separate package: real data shape differs
-client.go, filter.go from Asgardeo's in confirmed ways — different company-name
-types.go field, direct isWSO2User flag, real auth events, no
-normalize.go unified action_name coverage)
-
-internal/validation/ — Classification logic (Asgardeo only, currently)
-types.go EmailClassification, Outcome, Tag constants
-classify.go The 5 ordered rules
-wso2_domains.go Domain-based internal-account check
-
+internal/apim/ — APIM integration (separate package: real data shape
+differs from Asgardeo in confirmed, structural ways)
+internal/validation/ — Shared classification logic (Classify, Outcome, Tag types,
+IsWSO2Domain), used by BOTH products
 internal/email/ — Phase 03: email generation (built, blocked on API access)
-types.go, client.go Generator interface + real Anthropic client
-template.go Shared outreach email template
-summary.go Turns a moesif.Summary into plain text for Claude
-
 internal/handler/ — HTTP handlers tying everything together
-events.go, apim_events.go Raw activity endpoints (internal-only)
-validate.go Combines Search → Normalize → Classify
-generate_email.go Combines the above + calls the email Generator
 
 
-**Data flow (`/validate`):** query params → `moesif.Search()` → `moesif.Normalize()` → `validation.Classify()` → JSON response (decision + full activity context).
-
----
-
-## Why one unified service, not separate microservices
-
-This is meant to eventually cover 5 SaaS products, not just Asgardeo. Rather than build 5 separate services, everything lives in one Go service with a consistent parent response shape (org name, tenure, location, event count) across all products, while each product gets its own package for product-specific logic and credentials. Adding a new product means adding a new package (as done for APIM), not rebuilding anything shared.
+**Data flow (`/validate` or `/apim/validate`):** query params → `Search()` → `Normalize()` → `Classify()` (shared package) → JSON response.
 
 ---
 
 ## Testing notes
 
-- 47 tests across all packages, all runnable without any real API key or network access — mocks satisfy each handler's client interface; `client_test.go` files use local `httptest.Server` instances simulating real Moesif response shapes.
-- Test data is built from confirmed real shapes, not guesses — including edge cases like onboarding step `0` being valid (not the same as "never skipped"), and geo/wizard-path/action-name data being taken from the correct event in a set.
+~70 tests across all packages, all runnable without any real API key. Test data reflects confirmed real shapes, including deliberately tricky edge cases (step 0 vs. never-skipped, WSO2-domain-beats-corporate ordering, `apiCreated` requiring both Start+End events, noise-immune threshold counting).
 
 ---
 
@@ -123,11 +193,11 @@ This is meant to eventually cover 5 SaaS products, not just Asgardeo. Rather tha
 
 | Var | Purpose |
 |---|---|
-| `ASGARDEO_MOESIF_API_KEY` | Asgardeo's Moesif Management API key |
-| `APIM_MOESIF_API_KEY` | APIM's separate Moesif Management API key |
-| `MOESIF_BASE_URL` | `https://api.moesif.com` (shared across products) |
-| `ANTHROPIC_API_KEY` | Claude API key — pending access approval as of this writing |
+| `ASGARDEO_MOESIF_API_KEY` | Asgardeo's Moesif key |
+| `APIM_MOESIF_API_KEY` | APIM's separate Moesif key |
+| `MOESIF_BASE_URL` | `https://api.moesif.com` |
+| `ANTHROPIC_API_KEY` | Claude API key — pending access |
 | `PORT` | Local server port (default `8081`) |
-| `ENABLE_RAW_ACTIVITY_ROUTES` | Set to `true` locally to enable `/events` and `/apim/events`. Omit on real deployments. |
+| `ENABLE_RAW_ACTIVITY_ROUTES` | `true` locally to enable `/events`/`/apim/events`. Omit on real deployments. |
 
-**Never commit `.env`** — it's git-ignored at the repo root.
+**Never commit `.env`.**
