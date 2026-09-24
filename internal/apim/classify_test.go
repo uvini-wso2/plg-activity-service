@@ -36,19 +36,6 @@ func TestClassify_WSO2DomainExcluded(t *testing.T) {
 	}
 }
 
-// TestClassify_IsWSO2UserFlagExcludes confirms APIM's direct isWSO2User
-// signal ALSO triggers exclusion, even with a non-wso2.com domain — this
-// is the one real improvement APIM has over Asgardeo's domain-only check.
-func TestClassify_IsWSO2UserFlagExcludes(t *testing.T) {
-	ec := validation.EmailClassification{Domain: "gmail.com", Category: validation.CategoryPersonal}
-	summary := Summary{IsWSO2User: true, ProductActivity: ProductActivity{HasMeaningfulActivity: true}}
-	result := Classify(ec, summary)
-
-	if result.Outcome != validation.OutcomeExcluded {
-		t.Errorf("expected Excluded via isWSO2User flag even with non-wso2.com domain, got %s", result.Outcome)
-	}
-}
-
 func TestClassify_WSO2BeatsCorporate(t *testing.T) {
 	ec := validation.EmailClassification{Domain: "wso2.com", Category: validation.CategoryCorporate}
 	summary := Summary{ProductActivity: ProductActivity{HasMeaningfulActivity: true}}

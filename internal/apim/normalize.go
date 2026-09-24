@@ -3,23 +3,10 @@ package apim
 import "time"
 
 // Action name values for APIM's "action_name" field — CONFIRMED real
-// values, expanded per team decision (2026-09-22). Fields marked "not
-// wired in" below are kept as reference only.
+// values, expanded per team decisions (2026-09-22, 2026-09-24).
 const (
-	ActionNameLandingSignInSucceeded = "Landing-SignIn-Succeeded"
-	ActionNameQuickStartSkipped      = "QuickStart-Skipped"
-
-	// Confirmed real, but explicitly NOT tracked in ProductActivity per
-	// team decision (2026-09-22) — kept as reference only:
-	//   ActionNameLandingSignUpSucceeded = "Landing-SignUp-Succeeded"
-	//   ActionNamePortalViewedHome        = "Portal-Viewed-Home"
-	//   ActionNameHomePageVisit           = "home-page-visit"
-	//   ActionNameProjectCreatedStart     = "Project-Created-Start"
-	//   ActionNameLandingSignInViewed     = "Landing-SignIn-Viewed"
-	//   ActionNameLandingSignInFailed     = "Landing-SignIn-Failed"
-	//   ActionNameLandingViewedPage       = "Landing-Viewed-Page"
-	//   ActionNameAPIInvoked              = "API-Invoked" // still under investigation by the team
-
+	ActionNameLandingSignInSucceeded    = "Landing-SignIn-Succeeded"
+	ActionNameQuickStartSkipped         = "QuickStart-Skipped"
 	ActionNameQuickStartSelectedProduct = "QuickStart-Selected-Product"
 	ActionNameComponentCreatedStart     = "Component-Created-Start"
 	ActionNameComponentCreatedEnd       = "Component-Created-End"
@@ -31,10 +18,24 @@ const (
 	ActionNameComponentTested           = "Component-Tested"
 	ActionNameComponentPromoted         = "Component-Promoted"
 	ActionNameComponentGeneratedKey     = "Component-Generated-Key"
+
+	// ActionNameAPIInvoked: CONFIRMED real (seen on the apimsaas company,
+	// 2026-09-21). Now wired in per team decision (2026-09-24) — used to
+	// redefine the meaningful-activity threshold, counting ONLY these
+	// events instead of raw eventsFound.
+	ActionNameAPIInvoked = "API-Invoked"
+
+	// Confirmed real, but explicitly NOT tracked per team decision
+	// (2026-09-22) — kept as reference only:
+	//   ActionNameLandingSignUpSucceeded = "Landing-SignUp-Succeeded"
+	//   ActionNamePortalViewedHome        = "Portal-Viewed-Home"
+	//   ActionNameHomePageVisit           = "home-page-visit"
+	//   ActionNameProjectCreatedStart     = "Project-Created-Start"
+	//   ActionNameLandingSignInViewed     = "Landing-SignIn-Viewed"
+	//   ActionNameLandingSignInFailed     = "Landing-SignIn-Failed"
+	//   ActionNameLandingViewedPage       = "Landing-Viewed-Page"
 )
 
-// sriLankaLocation / timeOutputLayout: same Sri Lanka display convention
-// as internal/moesif (team decision, 2026-09-16).
 var sriLankaLocation = func() *time.Location {
 	loc, err := time.LoadLocation("Asia/Colombo")
 	if err != nil {
@@ -45,24 +46,16 @@ var sriLankaLocation = func() *time.Location {
 
 const timeOutputLayout = "January 2, 2006 3:04 PM"
 
-// ProductActivity holds signals specific to APIM. Redefined per team
-// decision (2026-09-22) — see normalize_test.go for confirmed behavior of
-// each field.
+// ProductActivity holds signals specific to APIM.
 type ProductActivity struct {
-	// QuickStartCompleted: renamed + INVERTED from the old
-	// "QuickStartSkipped" (2026-09-22) — true when NO skip event exists
-	// (they went through fully), false when a skip event IS present.
 	QuickStartCompleted bool `json:"quickStartCompleted"`
 
-	QuickStartSelectedProduct bool `json:"quickStartSelectedProduct"`
-	// DeploymentModel: from QuickStart-Selected-Product's metadata — see
-	// RawMetadata.DeploymentModel's doc comment; field name UNCONFIRMED.
-	DeploymentModel string `json:"deploymentModel,omitempty"`
+	QuickStartSelectedProduct bool   `json:"quickStartSelectedProduct"`
+	DeploymentModel           string `json:"deploymentModel,omitempty"`
+	// Context: NEW (2026-09-24) — a separate metadata value on
+	// QuickStart-Selected-Product, alongside DeploymentModel.
+	Context string `json:"context,omitempty"`
 
-	// APICreated is true ONLY when BOTH Component-Created-Start AND
-	// Component-Created-End are present — confirmed by the team
-	// (2026-09-22): "if both these events are there we take it as API is
-	// created."
 	APICreated bool `json:"apiCreated"`
 
 	AttemptedSourceMethod string `json:"attemptedSourceMethod,omitempty"`
@@ -76,20 +69,24 @@ type ProductActivity struct {
 	ComponentPromoted     bool `json:"componentPromoted"`
 	ComponentKeyGenerated bool `json:"componentKeyGenerated"`
 
-	// HasMeaningfulActivity: threshold confirmed 400 (2026-09-18), but
-	// WHAT is counted is still unresolved as of 2026-09-22 — currently
-	// counts every event Moesif returns, including confirmed tracking
-	// noise and duplicate events. See README for details.
+	// APIInvokedCount / HasMeaningfulActivity: REDEFINED (2026-09-24) —
+	// counts specifically how many API-Invoked events occurred (within
+	// the fetched event window — see Search()'s pagination cap), rather
+	// than raw eventsFound. This directly addresses the confirmed
+	// duplicate-event/bot-traffic noise found in raw counts.
+	APIInvokedCount       int  `json:"apiInvokedCount"`
 	HasMeaningfulActivity bool `json:"hasMeaningfulActivity"`
 }
 
+// Summary: IsWSO2User REMOVED (2026-09-24) — APIM now uses the same
+// domain-based WSO2 check as every other product (see
+// internal/validation.IsWSO2Domain), not its own direct signal.
 type Summary struct {
 	OrganizationName string          `json:"organizationName,omitempty"`
 	FirstSeen        string          `json:"firstSeen"`
 	LastActivity     string          `json:"lastActivity"`
 	Timezone         string          `json:"timezone,omitempty"`
 	CountryName      string          `json:"countryName,omitempty"`
-	IsWSO2User       bool            `json:"isWSO2User"`
 	ProductActivity  ProductActivity `json:"productActivity"`
 	EventsFound      int             `json:"eventsFound"`
 }
@@ -102,15 +99,13 @@ func Normalize(hits []RawHit, total int) Summary {
 	var summary Summary
 	var earliest, latest time.Time
 	var quickStartSkipped, componentCreatedStart, componentCreatedEnd bool
+	var apiInvokedCount int
 
 	for _, hit := range hits {
 		src := hit.Source
 
 		if summary.OrganizationName == "" && src.Company.Metadata.Name != "" {
 			summary.OrganizationName = src.Company.Metadata.Name
-		}
-		if src.User.Metadata.IsWSO2User == "true" {
-			summary.IsWSO2User = true
 		}
 
 		switch src.ActionName {
@@ -120,6 +115,9 @@ func Normalize(hits []RawHit, total int) Summary {
 			summary.ProductActivity.QuickStartSelectedProduct = true
 			if src.Metadata.DeploymentModel != "" {
 				summary.ProductActivity.DeploymentModel = src.Metadata.DeploymentModel
+			}
+			if src.Metadata.Context != "" {
+				summary.ProductActivity.Context = src.Metadata.Context
 			}
 		case ActionNameComponentCreatedStart:
 			componentCreatedStart = true
@@ -142,6 +140,8 @@ func Normalize(hits []RawHit, total int) Summary {
 			summary.ProductActivity.ComponentPromoted = true
 		case ActionNameComponentGeneratedKey:
 			summary.ProductActivity.ComponentKeyGenerated = true
+		case ActionNameAPIInvoked:
+			apiInvokedCount++
 		}
 
 		eventTime, timeErr := parseAPIMTime(src.Request.Time)
@@ -168,7 +168,8 @@ func Normalize(hits []RawHit, total int) Summary {
 	}
 
 	summary.EventsFound = total
-	summary.ProductActivity.HasMeaningfulActivity = total >= meaningfulActivityThreshold
+	summary.ProductActivity.APIInvokedCount = apiInvokedCount
+	summary.ProductActivity.HasMeaningfulActivity = apiInvokedCount >= meaningfulActivityThreshold
 
 	return summary
 }

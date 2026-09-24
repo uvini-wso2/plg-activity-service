@@ -58,8 +58,12 @@ func TestAPIMValidate_EmailOptional(t *testing.T) {
 }
 
 func TestAPIMValidate_MeaningfulActivity(t *testing.T) {
+	var hits []apim.RawHit
+	for i := 0; i < 400; i++ {
+		hits = append(hits, apim.RawHit{Source: apim.RawSource{ActionName: apim.ActionNameAPIInvoked, Request: apim.RawRequest{Time: "2026-09-14T08:30:00.000"}}})
+	}
 	mock := &mockAPIMClient{
-		Response: apim.SearchResponse{Result: apim.HitsResult{Hits: []apim.RawHit{}, Total: 500}},
+		Response: apim.SearchResponse{Result: apim.HitsResult{Hits: hits, Total: 400}},
 	}
 	req := httptest.NewRequest(http.MethodGet, "/apim/validate?company_id=company_789&domain=gmail.com&category=personal", nil)
 	rec := httptest.NewRecorder()

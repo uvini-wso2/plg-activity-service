@@ -57,17 +57,11 @@ type RawCompanyMetadata struct {
 	Name string `json:"name"`
 }
 
+// RawUser: isWSO2User REMOVED per team decision (2026-09-24) — APIM now
+// uses the same domain-based WSO2 check as every other product, not a
+// product-specific direct flag, for consistency.
 type RawUser struct {
-	Email    string          `json:"email"`
-	Metadata RawUserMetadata `json:"metadata"`
-}
-
-// RawUserMetadata: CONFIRMED real field isWSO2User (string "true"/"false",
-// not a real bool, per observed raw data) — a direct signal APIM has that
-// Asgardeo does NOT; for Asgardeo we infer internal-vs-external purely
-// from checking the email domain instead.
-type RawUserMetadata struct {
-	IsWSO2User string `json:"isWSO2User"`
+	Email string `json:"email"`
 }
 
 // RawMetadata holds event-specific metadata, confirmed by the team
@@ -81,9 +75,15 @@ type RawUserMetadata struct {
 // under wasn't specified in the meeting. This is a PLACEHOLDER guess,
 // not verified against real data. Confirm the actual field name before
 // relying on this.
+//
+// RawMetadata: DeploymentModel CONFIRMED real (2026-09-23), real value
+// seen: "saas". Context is NEW (2026-09-24) — a separate metadata value
+// on QuickStart-Selected-Product, alongside deployment_model. Field name
+// assumed to literally be "context"; not yet verified against real data.
 type RawMetadata struct {
 	Method          string `json:"method"`
 	Source          string `json:"source"`
 	Outcome         string `json:"outcome"`
-	DeploymentModel string `json:"deployment_model"` // UNCONFIRMED field name
+	DeploymentModel string `json:"deployment_model"`
+	Context         string `json:"context"`
 }

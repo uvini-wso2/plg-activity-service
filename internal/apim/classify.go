@@ -21,10 +21,9 @@ func Classify(ec validation.EmailClassification, summary Summary) validation.Res
 		return validation.Result{Outcome: validation.OutcomeExcluded, Tags: []string{validation.TagInvalidEmail}}
 	}
 
-	// APIM gives us a DIRECT signal (isWSO2User) that Asgardeo doesn't
-	// have — check both the domain and this flag, since either one
-	// confirming "WSO2 internal" is enough to exclude.
-	if validation.IsWSO2Domain(ec.Domain) || summary.IsWSO2User {
+	// isWSO2User check REMOVED (2026-09-24) — APIM now uses the same
+	// domain-based check as every other product, for consistency.
+	if validation.IsWSO2Domain(ec.Domain) {
 		return validation.Result{Outcome: validation.OutcomeExcluded, Tags: []string{validation.TagWSO2Domain}}
 	}
 

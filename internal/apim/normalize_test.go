@@ -13,7 +13,6 @@ func TestNormalize_BasicFields(t *testing.T) {
 					GeoIP: RawGeoIP{Timezone: "Asia/Colombo", CountryName: "Sri Lanka"},
 				},
 				Company: RawCompany{Metadata: RawCompanyMetadata{Name: "shopwaveorg"}},
-				User:    RawUser{Metadata: RawUserMetadata{IsWSO2User: "false"}},
 			},
 		},
 	}
@@ -22,9 +21,6 @@ func TestNormalize_BasicFields(t *testing.T) {
 
 	if summary.OrganizationName != "shopwaveorg" {
 		t.Errorf("expected OrganizationName = shopwaveorg, got %q", summary.OrganizationName)
-	}
-	if summary.IsWSO2User {
-		t.Error("expected IsWSO2User = false")
 	}
 	if summary.EventsFound != 3 {
 		t.Errorf("expected EventsFound = 3 (the real Moesif total, not len(hits)), got %d", summary.EventsFound)
@@ -35,38 +31,52 @@ func TestNormalize_BasicFields(t *testing.T) {
 	}
 }
 
-func TestNormalize_IsWSO2User(t *testing.T) {
-	hits := []RawHit{
-		{
-			Source: RawSource{
-				CompanyID:  "company_789",
-				ActionName: ActionNameLandingSignInSucceeded,
-				Request:    RawRequest{Time: "2026-09-14T08:30:00.000"},
-				User:       RawUser{Metadata: RawUserMetadata{IsWSO2User: "true"}},
-			},
-		},
-	}
-
-	summary := Normalize(hits, 1)
-
-	if !summary.IsWSO2User {
-		t.Error("expected IsWSO2User = true when isWSO2User field is the string \"true\"")
-	}
-}
-
 func TestNormalize_MeaningfulActivity_AboveThreshold(t *testing.T) {
-	summary := Normalize([]RawHit{}, 400)
+	var hits []RawHit
+	for i := 0; i < 400; i++ {
+		hits = append(hits, RawHit{Source: RawSource{ActionName: ActionNameAPIInvoked, Request: RawRequest{Time: "2026-09-14T08:30:00.000"}}})
+	}
 
+	summary := Normalize(hits, 400)
+
+	if summary.ProductActivity.APIInvokedCount != 400 {
+		t.Errorf("expected APIInvokedCount = 400, got %d", summary.ProductActivity.APIInvokedCount)
+	}
 	if !summary.ProductActivity.HasMeaningfulActivity {
-		t.Error("expected HasMeaningfulActivity = true at exactly 400 (threshold is inclusive)")
+		t.Error("expected HasMeaningfulActivity = true at exactly 400 API-Invoked events (threshold is inclusive)")
 	}
 }
 
 func TestNormalize_MeaningfulActivity_BelowThreshold(t *testing.T) {
-	summary := Normalize([]RawHit{}, 399)
+	var hits []RawHit
+	for i := 0; i < 399; i++ {
+		hits = append(hits, RawHit{Source: RawSource{ActionName: ActionNameAPIInvoked, Request: RawRequest{Time: "2026-09-14T08:30:00.000"}}})
+	}
+
+	summary := Normalize(hits, 399)
 
 	if summary.ProductActivity.HasMeaningfulActivity {
-		t.Error("expected HasMeaningfulActivity = false at 399 (below threshold)")
+		t.Error("expected HasMeaningfulActivity = false at 399 API-Invoked events (below threshold)")
+	}
+}
+
+// TestNormalize_MeaningfulActivity_IgnoresNoise confirms the whole point
+// of the redefinition (2026-09-24): a huge raw eventsFound total does NOT
+// trigger HasMeaningfulActivity if none of those events are actually
+// API-Invoked — directly addressing the confirmed duplicate/bot-traffic
+// noise found in raw counts.
+func TestNormalize_MeaningfulActivity_IgnoresNoise(t *testing.T) {
+	hits := []RawHit{
+		{Source: RawSource{ActionName: ActionNameLandingSignInSucceeded, Request: RawRequest{Time: "2026-09-14T08:30:00.000"}}},
+	}
+
+	summary := Normalize(hits, 5000) // huge raw total, but zero real API-Invoked events
+
+	if summary.ProductActivity.APIInvokedCount != 0 {
+		t.Errorf("expected APIInvokedCount = 0, got %d", summary.ProductActivity.APIInvokedCount)
+	}
+	if summary.ProductActivity.HasMeaningfulActivity {
+		t.Error("expected HasMeaningfulActivity = false despite a huge eventsFound total, since none were real API-Invoked events")
 	}
 }
 
@@ -106,7 +116,7 @@ func TestNormalize_QuickStartSelectedProduct(t *testing.T) {
 				CompanyID:  "company_789",
 				ActionName: ActionNameQuickStartSelectedProduct,
 				Request:    RawRequest{Time: "2026-09-14T08:30:00.000"},
-				Metadata:   RawMetadata{DeploymentModel: "gateway"},
+				Metadata:   RawMetadata{DeploymentModel: "saas", Context: "trial"},
 			},
 		},
 	}
@@ -116,23 +126,17 @@ func TestNormalize_QuickStartSelectedProduct(t *testing.T) {
 	if !summary.ProductActivity.QuickStartSelectedProduct {
 		t.Error("expected ProductActivity.QuickStartSelectedProduct = true")
 	}
-	if summary.ProductActivity.DeploymentModel != "gateway" {
-		t.Errorf("expected DeploymentModel = gateway, got %q", summary.ProductActivity.DeploymentModel)
+	if summary.ProductActivity.DeploymentModel != "saas" {
+		t.Errorf("expected DeploymentModel = saas, got %q", summary.ProductActivity.DeploymentModel)
+	}
+	if summary.ProductActivity.Context != "trial" {
+		t.Errorf("expected Context = trial, got %q", summary.ProductActivity.Context)
 	}
 }
 
-// TestNormalize_QuickStartCompleted_NoSkip confirms the renamed + inverted
-// logic (2026-09-22): QuickStartCompleted is true when NO skip event
-// exists at all.
 func TestNormalize_QuickStartCompleted_NoSkip(t *testing.T) {
 	hits := []RawHit{
-		{
-			Source: RawSource{
-				CompanyID:  "company_789",
-				ActionName: ActionNameLandingSignInSucceeded,
-				Request:    RawRequest{Time: "2026-09-14T08:30:00.000"},
-			},
-		},
+		{Source: RawSource{ActionName: ActionNameLandingSignInSucceeded, Request: RawRequest{Time: "2026-09-14T08:30:00.000"}}},
 	}
 
 	summary := Normalize(hits, 1)
@@ -142,17 +146,9 @@ func TestNormalize_QuickStartCompleted_NoSkip(t *testing.T) {
 	}
 }
 
-// TestNormalize_QuickStartCompleted_WithSkip confirms the inverted case:
-// a real skip event present means QuickStartCompleted = false.
 func TestNormalize_QuickStartCompleted_WithSkip(t *testing.T) {
 	hits := []RawHit{
-		{
-			Source: RawSource{
-				CompanyID:  "company_789",
-				ActionName: ActionNameQuickStartSkipped,
-				Request:    RawRequest{Time: "2026-09-14T08:30:00.000"},
-			},
-		},
+		{Source: RawSource{ActionName: ActionNameQuickStartSkipped, Request: RawRequest{Time: "2026-09-14T08:30:00.000"}}},
 	}
 
 	summary := Normalize(hits, 1)
@@ -162,24 +158,10 @@ func TestNormalize_QuickStartCompleted_WithSkip(t *testing.T) {
 	}
 }
 
-// TestNormalize_APICreated_BothEventsPresent confirms APICreated requires
-// BOTH Component-Created-Start AND Component-Created-End (2026-09-22).
 func TestNormalize_APICreated_BothEventsPresent(t *testing.T) {
 	hits := []RawHit{
-		{
-			Source: RawSource{
-				CompanyID:  "company_789",
-				ActionName: ActionNameComponentCreatedStart,
-				Request:    RawRequest{Time: "2026-09-14T08:30:00.000"},
-			},
-		},
-		{
-			Source: RawSource{
-				CompanyID:  "company_789",
-				ActionName: ActionNameComponentCreatedEnd,
-				Request:    RawRequest{Time: "2026-09-14T08:31:00.000"},
-			},
-		},
+		{Source: RawSource{ActionName: ActionNameComponentCreatedStart, Request: RawRequest{Time: "2026-09-14T08:30:00.000"}}},
+		{Source: RawSource{ActionName: ActionNameComponentCreatedEnd, Request: RawRequest{Time: "2026-09-14T08:31:00.000"}}},
 	}
 
 	summary := Normalize(hits, 2)
@@ -189,17 +171,9 @@ func TestNormalize_APICreated_BothEventsPresent(t *testing.T) {
 	}
 }
 
-// TestNormalize_APICreated_OnlyStartPresent confirms APICreated stays
-// false if only the Start event exists, without a matching End.
 func TestNormalize_APICreated_OnlyStartPresent(t *testing.T) {
 	hits := []RawHit{
-		{
-			Source: RawSource{
-				CompanyID:  "company_789",
-				ActionName: ActionNameComponentCreatedStart,
-				Request:    RawRequest{Time: "2026-09-14T08:30:00.000"},
-			},
-		},
+		{Source: RawSource{ActionName: ActionNameComponentCreatedStart, Request: RawRequest{Time: "2026-09-14T08:30:00.000"}}},
 	}
 
 	summary := Normalize(hits, 1)
@@ -211,30 +185,9 @@ func TestNormalize_APICreated_OnlyStartPresent(t *testing.T) {
 
 func TestNormalize_QuickStartFunnelMetadata(t *testing.T) {
 	hits := []RawHit{
-		{
-			Source: RawSource{
-				CompanyID:  "company_789",
-				ActionName: ActionNameQuickStartAttemptedSource,
-				Request:    RawRequest{Time: "2026-09-14T08:30:00.000"},
-				Metadata:   RawMetadata{Method: "import"},
-			},
-		},
-		{
-			Source: RawSource{
-				CompanyID:  "company_789",
-				ActionName: ActionNameQuickStartValidation,
-				Request:    RawRequest{Time: "2026-09-14T08:31:00.000"},
-				Metadata:   RawMetadata{Source: "github", Outcome: "success"},
-			},
-		},
-		{
-			Source: RawSource{
-				CompanyID:  "company_789",
-				ActionName: ActionNameQuickStartSelectedSource,
-				Request:    RawRequest{Time: "2026-09-14T08:32:00.000"},
-				Metadata:   RawMetadata{Source: "github"},
-			},
-		},
+		{Source: RawSource{ActionName: ActionNameQuickStartAttemptedSource, Request: RawRequest{Time: "2026-09-14T08:30:00.000"}, Metadata: RawMetadata{Method: "import"}}},
+		{Source: RawSource{ActionName: ActionNameQuickStartValidation, Request: RawRequest{Time: "2026-09-14T08:31:00.000"}, Metadata: RawMetadata{Source: "github", Outcome: "success"}}},
+		{Source: RawSource{ActionName: ActionNameQuickStartSelectedSource, Request: RawRequest{Time: "2026-09-14T08:32:00.000"}, Metadata: RawMetadata{Source: "github"}}},
 	}
 
 	summary := Normalize(hits, 3)
