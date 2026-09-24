@@ -74,7 +74,7 @@ Same parameter shape as `/validate` above. Reuses the same `Outcome`/`Tag` struc
 | `quickStartCompleted` | `true` when NO `QuickStart-Skipped` event exists (they went through fully) |
 | `quickStartSelectedProduct` | They picked a product during quick-start |
 | `deploymentModel` | e.g. `"saas"` — from `QuickStart-Selected-Product` metadata. **Confirmed real (2026-09-23).** |
-| `context` | A separate metadata value on the same event, alongside `deploymentModel`. **New (2026-09-24), field name not yet verified against real data.** |
+| `context` | A separate metadata value on the same event, alongside `deploymentModel`. **Not yet live in the product (confirmed 2026-09-24)** — this is planned but not yet shipped, which is why no real event has ever carried it. Field name is our best guess, to be confirmed once the feature ships. |
 | `apiCreated` | `true` only when **both** `Component-Created-Start` AND `Component-Created-End` are present |
 | `attemptedSourceMethod` | e.g. `"sample"`, `"uploaded"` — **confirmed real.** |
 | `validationSource` / `validationOutcome` | From `QuickStart-Validation`. **Unverified** — this event has never fired for anyone in a full year of real data. |
@@ -97,6 +97,8 @@ Runs the same pipeline as `/validate`, then feeds the result into Claude to prod
 
 **Gated behind an environment variable, off by default:**
 
+ENABLE_RAW_ACTIVITY_ROUTES=true
+
 Set locally for testing; omit on real deployments.
 
 **Caveat:** `/apim/events` is currently the only way to retrieve APIM data with no validation applied at all.
@@ -117,7 +119,7 @@ APIM's raw data has a direct `isWSO2User` flag that Asgardeo doesn't. It was ini
 
 Per a live, controlled investigation by the team (2026-09-22): most of APIM's detailed console-driven events (component created/deployed/tested, quick-start funnel steps) are tagged with `company_id`, and some don't carry a `user_id` at all — so `company_id` is the more complete signal generally.
 
-**Known tension, not yet resolved:** we separately proved a real case (`aloyayribedding`, company `d2cc7cc8-62ab-4d96-91f8-a2bbada1e988`) where the opposite is true — specific `Component-Created-Start`/`-End` events for that account carry no `company_id` at all, so switching to `company_id`-only causes real activity to be missed that `user_id` alone would catch. Both findings are correct, about different events. A possible future fix: query both and merge results, rather than picking one. Flagged to the team, not yet decided.
+**Known accepted limitation (2026-09-24):** a real case (`aloyayribedding`, company `d2cc7cc8-62ab-4d96-91f8-a2bbada1e988`) proved some specific events for some accounts carry no `company_id` at all, so `company_id`-only lookups can occasionally miss real activity that `user_id` alone would catch. The team confirmed `company_id` should be used as the standing decision regardless — this is an accepted tradeoff, not an open question.
 
 ---
 
@@ -134,13 +136,17 @@ Confirmed contributing noise sources:
 - **Bot/monitoring traffic**: repeated hits from the same datacenter IPs using a `moesif-nodejs` client (not a real browser), plus genuine third-party uptime-monitoring traffic (Site24x7) hitting a test account.
 - **Marketing/analytics tracking**: Application Insights telemetry, ad-tracking pixels, Google Analytics collection endpoints (`/g/collect`, `/pixel/collect`) all get logged as regular Moesif events.
 
-### `company_id`-only lookups can miss real activity (KNOWN LIMITATION, unresolved)
+### `company_id`-only lookups can miss real activity (KNOWN, ACCEPTED)
 
-See "Design decisions" above — some real events for some accounts simply aren't tagged with `company_id` at all.
+See "Design decisions" above — some real events for some accounts simply aren't tagged with `company_id` at all. Team decided to accept this tradeoff and use `company_id` as the standing default anyway.
 
 ### `QuickStart-Validation` has never fired in real data
 
 Searched with exact match and broad wildcards, across a full year of data — zero occurrences anywhere in the dataset. `validationSource`/`validationOutcome` remain built exactly per the team's description, but genuinely unverifiable until someone triggers that specific "bring your own API" flow for real.
+
+### The `context` field is a planned feature, not yet shipped
+
+Confirmed directly with the team (2026-09-24) — this metadata value doesn't exist in production yet, which is why it was never found in any real event. Built ahead of time per her description; will need re-confirming against real data once the feature actually ships.
 
 ### Real Moesif pagination cap
 
