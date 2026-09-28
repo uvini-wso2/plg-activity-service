@@ -39,8 +39,8 @@ func TestNormalize_MeaningfulActivity_AboveThreshold(t *testing.T) {
 
 	summary := Normalize(hits, 400)
 
-	if summary.ProductActivity.APIInvokedCount != 400 {
-		t.Errorf("expected APIInvokedCount = 400, got %d", summary.ProductActivity.APIInvokedCount)
+	if summary.ProductActivity.SelfHostedAPIInvokedCount != 400 {
+		t.Errorf("expected SelfHostedAPIInvokedCount = 400, got %d", summary.ProductActivity.SelfHostedAPIInvokedCount)
 	}
 	if !summary.ProductActivity.HasMeaningfulActivity {
 		t.Error("expected HasMeaningfulActivity = true at exactly 400 API-Invoked events (threshold is inclusive)")
@@ -72,8 +72,8 @@ func TestNormalize_MeaningfulActivity_IgnoresNoise(t *testing.T) {
 
 	summary := Normalize(hits, 5000) // huge raw total, but zero real API-Invoked events
 
-	if summary.ProductActivity.APIInvokedCount != 0 {
-		t.Errorf("expected APIInvokedCount = 0, got %d", summary.ProductActivity.APIInvokedCount)
+	if summary.ProductActivity.SelfHostedAPIInvokedCount != 0 {
+		t.Errorf("expected SelfHostedAPIInvokedCount = 0, got %d", summary.ProductActivity.SelfHostedAPIInvokedCount)
 	}
 	if summary.ProductActivity.HasMeaningfulActivity {
 		t.Error("expected HasMeaningfulActivity = false despite a huge eventsFound total, since none were real API-Invoked events")

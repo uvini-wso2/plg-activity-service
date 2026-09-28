@@ -69,13 +69,12 @@ type ProductActivity struct {
 	ComponentPromoted     bool `json:"componentPromoted"`
 	ComponentKeyGenerated bool `json:"componentKeyGenerated"`
 
-	// APIInvokedCount / HasMeaningfulActivity: REDEFINED (2026-09-24) —
-	// counts specifically how many API-Invoked events occurred (within
-	// the fetched event window — see Search()'s pagination cap), rather
-	// than raw eventsFound. This directly addresses the confirmed
-	// duplicate-event/bot-traffic noise found in raw counts.
-	APIInvokedCount       int  `json:"apiInvokedCount"`
-	HasMeaningfulActivity bool `json:"hasMeaningfulActivity"`
+	// SelfHostedAPIInvokedCount: RENAMED (2026-09-28) — confirmed with the
+	// team that API-Invoked only represents SELF-HOSTED API calls, not
+	// all API invocations regardless of deployment model. The old name
+	// (apiInvokedCount) implied broader coverage than it actually has.
+	SelfHostedAPIInvokedCount int  `json:"selfHostedApiInvokedCount"`
+	HasMeaningfulActivity     bool `json:"hasMeaningfulActivity"`
 }
 
 // Summary: IsWSO2User REMOVED (2026-09-24) — APIM now uses the same
@@ -99,7 +98,7 @@ func Normalize(hits []RawHit, total int) Summary {
 	var summary Summary
 	var earliest, latest time.Time
 	var quickStartSkipped, componentCreatedStart, componentCreatedEnd bool
-	var apiInvokedCount int
+	var selfHostedAPIInvokedCount int
 
 	for _, hit := range hits {
 		src := hit.Source
@@ -141,7 +140,7 @@ func Normalize(hits []RawHit, total int) Summary {
 		case ActionNameComponentGeneratedKey:
 			summary.ProductActivity.ComponentKeyGenerated = true
 		case ActionNameAPIInvoked:
-			apiInvokedCount++
+			selfHostedAPIInvokedCount++
 		}
 
 		eventTime, timeErr := parseAPIMTime(src.Request.Time)
@@ -168,8 +167,8 @@ func Normalize(hits []RawHit, total int) Summary {
 	}
 
 	summary.EventsFound = total
-	summary.ProductActivity.APIInvokedCount = apiInvokedCount
-	summary.ProductActivity.HasMeaningfulActivity = apiInvokedCount >= meaningfulActivityThreshold
+	summary.ProductActivity.SelfHostedAPIInvokedCount = selfHostedAPIInvokedCount
+	summary.ProductActivity.HasMeaningfulActivity = selfHostedAPIInvokedCount >= meaningfulActivityThreshold
 
 	return summary
 }
