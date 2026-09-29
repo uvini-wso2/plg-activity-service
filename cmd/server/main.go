@@ -43,7 +43,8 @@ func main() {
 		APIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		Model:  "claude-sonnet-4-5",
 	})
-	mux.HandleFunc("GET /generate-email", handler.GenerateEmail(client, emailGenerator))
+	mux.HandleFunc("GET /asgardeo/generate-email", handler.GenerateEmail(client, emailGenerator))
+	mux.HandleFunc("GET /apim/generate-email", handler.APIMGenerateEmail(apimClient, emailGenerator))
 
 	// Raw activity endpoints (/asgardeo/events, /apim/events) are
 	// internal-only per team direction (2026-09-16): only
