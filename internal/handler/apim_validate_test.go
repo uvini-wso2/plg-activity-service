@@ -57,13 +57,17 @@ func TestAPIMValidate_EmailOptional(t *testing.T) {
 	}
 }
 
+// TestAPIMValidate_MeaningfulActivity: REDEFINED (2026-09-29) — uses a
+// real lifecycle signal (ComponentDeployed) instead of self-hosted
+// API-Invoked count.
 func TestAPIMValidate_MeaningfulActivity(t *testing.T) {
-	var hits []apim.RawHit
-	for i := 0; i < 400; i++ {
-		hits = append(hits, apim.RawHit{Source: apim.RawSource{ActionName: apim.ActionNameAPIInvoked, Request: apim.RawRequest{Time: "2026-09-14T08:30:00.000"}}})
-	}
 	mock := &mockAPIMClient{
-		Response: apim.SearchResponse{Result: apim.HitsResult{Hits: hits, Total: 400}},
+		Response: apim.SearchResponse{
+			Result: apim.HitsResult{
+				Hits:  []apim.RawHit{{Source: apim.RawSource{ActionName: apim.ActionNameComponentDeployed, Request: apim.RawRequest{Time: "2026-09-14T08:30:00.000"}}}},
+				Total: 1,
+			},
+		},
 	}
 	req := httptest.NewRequest(http.MethodGet, "/apim/validate?company_id=company_789&domain=gmail.com&category=personal", nil)
 	rec := httptest.NewRecorder()

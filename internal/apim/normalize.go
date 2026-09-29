@@ -90,6 +90,10 @@ type Summary struct {
 	EventsFound      int             `json:"eventsFound"`
 }
 
+// meaningfulActivityThreshold is no longer used for HasMeaningfulActivity
+// (redefined 2026-09-29 — see Normalize()) but kept here as it may still
+// be a useful reference threshold if selfHostedApiInvokedCount is used for
+// something else later.
 const meaningfulActivityThreshold = 400
 
 // Normalize aggregates raw APIM hits (already filtered to a single
@@ -168,7 +172,27 @@ func Normalize(hits []RawHit, total int) Summary {
 
 	summary.EventsFound = total
 	summary.ProductActivity.SelfHostedAPIInvokedCount = selfHostedAPIInvokedCount
-	summary.ProductActivity.HasMeaningfulActivity = selfHostedAPIInvokedCount >= meaningfulActivityThreshold
+
+	// HasMeaningfulActivity: REDEFINED (2026-09-29) — confirmed with the
+	// team that selfHostedApiInvokedCount should NOT be used for this,
+	// since 100% of real accounts checked use SaaS deployment (which
+	// structurally can never produce self-hosted API calls). The field
+	// itself is kept above for reference/visibility, just no longer
+	// drives this decision.
+	//
+	// PROPOSAL, NOT EXPLICITLY CONFIRMED: the team confirmed what to
+	// REMOVE, not what to replace it with. This uses the other confirmed
+	// real lifecycle signals — same philosophy as Asgardeo's
+	// meaningful-activity check: "has this account done something
+	// substantial enough for CS to reference." Any one of these real
+	// milestones counts. Confirm with the team before relying on this
+	// exact combination for real decisions.
+	summary.ProductActivity.HasMeaningfulActivity = summary.ProductActivity.APICreated ||
+		summary.ProductActivity.GatewayActivated ||
+		summary.ProductActivity.ComponentDeployed ||
+		summary.ProductActivity.ComponentTested ||
+		summary.ProductActivity.ComponentPromoted ||
+		summary.ProductActivity.ComponentKeyGenerated
 
 	return summary
 }

@@ -69,17 +69,18 @@ func TestAPIMEvents_MoesifError(t *testing.T) {
 	}
 }
 
-// TestAPIMEvents_MeaningfulActivityThreshold: REDEFINED (2026-09-24) —
-// HasMeaningfulActivity now counts API-Invoked events specifically, not
-// raw eventsFound. A huge Total with zero real API-Invoked events should
-// NOT trigger it.
+// TestAPIMEvents_MeaningfulActivityThreshold: REDEFINED (2026-09-29) —
+// HasMeaningfulActivity is no longer based on self-hosted API-Invoked
+// count at all; confirms a real lifecycle signal (GatewayActivated) now
+// drives it instead.
 func TestAPIMEvents_MeaningfulActivityThreshold(t *testing.T) {
-	var hits []apim.RawHit
-	for i := 0; i < 400; i++ {
-		hits = append(hits, apim.RawHit{Source: apim.RawSource{ActionName: apim.ActionNameAPIInvoked, Request: apim.RawRequest{Time: "2026-09-14T08:30:00.000"}}})
-	}
 	mock := &mockAPIMClient{
-		Response: apim.SearchResponse{Result: apim.HitsResult{Hits: hits, Total: 400}},
+		Response: apim.SearchResponse{
+			Result: apim.HitsResult{
+				Hits:  []apim.RawHit{{Source: apim.RawSource{ActionName: apim.ActionNameGatewayActivated, Request: apim.RawRequest{Time: "2026-09-14T08:30:00.000"}}}},
+				Total: 1,
+			},
+		},
 	}
 	req := httptest.NewRequest(http.MethodGet, "/apim/events?company_id=company_789", nil)
 	rec := httptest.NewRecorder()
@@ -94,7 +95,7 @@ func TestAPIMEvents_MeaningfulActivityThreshold(t *testing.T) {
 		t.Fatal("expected productActivity in response")
 	}
 	if productActivity["hasMeaningfulActivity"] != true {
-		t.Errorf("expected hasMeaningfulActivity = true at exactly 400 API-Invoked events, got %v", productActivity["hasMeaningfulActivity"])
+		t.Errorf("expected hasMeaningfulActivity = true when GatewayActivated is true, got %v", productActivity["hasMeaningfulActivity"])
 	}
 }
 

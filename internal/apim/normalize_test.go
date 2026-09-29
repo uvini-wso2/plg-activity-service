@@ -31,7 +31,12 @@ func TestNormalize_BasicFields(t *testing.T) {
 	}
 }
 
-func TestNormalize_MeaningfulActivity_AboveThreshold(t *testing.T) {
+// TestNormalize_MeaningfulActivity_NoLongerBasedOnSelfHosted confirms the
+// 2026-09-29 redefinition: a huge SelfHostedAPIInvokedCount alone does NOT
+// make HasMeaningfulActivity true anymore — confirmed with the team that
+// self-hosted usage should be excluded from this decision entirely, since
+// 100% of real accounts checked use SaaS deployment.
+func TestNormalize_MeaningfulActivity_NoLongerBasedOnSelfHosted(t *testing.T) {
 	var hits []RawHit
 	for i := 0; i < 400; i++ {
 		hits = append(hits, RawHit{Source: RawSource{ActionName: ActionNameAPIInvoked, Request: RawRequest{Time: "2026-09-14T08:30:00.000"}}})
@@ -42,8 +47,23 @@ func TestNormalize_MeaningfulActivity_AboveThreshold(t *testing.T) {
 	if summary.ProductActivity.SelfHostedAPIInvokedCount != 400 {
 		t.Errorf("expected SelfHostedAPIInvokedCount = 400, got %d", summary.ProductActivity.SelfHostedAPIInvokedCount)
 	}
+	if summary.ProductActivity.HasMeaningfulActivity {
+		t.Error("expected HasMeaningfulActivity = false — a high self-hosted count alone should NOT trigger this anymore")
+	}
+}
+
+// TestNormalize_MeaningfulActivity_RealLifecycleSignal confirms the new
+// basis: any one of the other confirmed real lifecycle signals now
+// triggers HasMeaningfulActivity.
+func TestNormalize_MeaningfulActivity_RealLifecycleSignal(t *testing.T) {
+	hits := []RawHit{
+		{Source: RawSource{ActionName: ActionNameGatewayActivated, Request: RawRequest{Time: "2026-09-14T08:30:00.000"}}},
+	}
+
+	summary := Normalize(hits, 1)
+
 	if !summary.ProductActivity.HasMeaningfulActivity {
-		t.Error("expected HasMeaningfulActivity = true at exactly 400 API-Invoked events (threshold is inclusive)")
+		t.Error("expected HasMeaningfulActivity = true when GatewayActivated is true")
 	}
 }
 
