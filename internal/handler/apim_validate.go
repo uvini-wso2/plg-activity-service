@@ -10,14 +10,12 @@ import (
 	"github.com/uvini-wso2/plg-activity-service/internal/validation"
 )
 
-// APIMValidate handles GET /apim/validate?company_id=...&user_id=...&email=...&domain=...&category=...
+// APIMValidate handles GET /apim/validate?company_id=...&user_id=...&email=...
 //
-// Mirrors Validate() (the Asgardeo handler) in structure, but uses
-// apim.Search/Normalize/Classify throughout. See apim.Classify's doc
-// comment — this reuses the shared validation rule structure, with only
-// the meaningful-activity signal and the isWSO2User check being
-// APIM-specific. Not yet fully confirmed with the team (2026-09-22).
-func APIMValidate(client apimClient) http.HandlerFunc {
+// UPDATED (2026-09-30): now calls the real classification API internally,
+// same as Validate() (the Asgardeo handler) — see that file's doc comment
+// for details.
+func APIMValidate(client apimClient, classifier classificationClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		companyID, errMsg := validateParam("company_id", r.URL.Query().Get("company_id"))
 		if errMsg != "" {
@@ -35,10 +33,15 @@ func APIMValidate(client apimClient) http.HandlerFunc {
 		}
 
 		email := strings.TrimSpace(r.URL.Query().Get("email"))
-		domain := strings.TrimSpace(r.URL.Query().Get("domain"))
-		category := strings.TrimSpace(r.URL.Query().Get("category"))
-		if domain == "" || category == "" {
-			http.Error(w, `{"error":"domain and category query parameters are required"}`, http.StatusBadRequest)
+		if email == "" {
+			http.Error(w, `{"error":"email query parameter is required"}`, http.StatusBadRequest)
+			return
+		}
+
+		classified, err := classifier.Classify(email)
+		if err != nil {
+			slog.Error("email classification failed", "error", err)
+			http.Error(w, `{"error":"failed to classify email"}`, http.StatusBadGateway)
 			return
 		}
 
@@ -60,8 +63,8 @@ func APIMValidate(client apimClient) http.HandlerFunc {
 
 		ec := validation.EmailClassification{
 			Email:    email,
-			Domain:   domain,
-			Category: category,
+			Domain:   classified.Domain,
+			Category: classified.Category,
 		}
 
 		validationResult := apim.Classify(ec, summary)
@@ -69,14 +72,14 @@ func APIMValidate(client apimClient) http.HandlerFunc {
 		response := struct {
 			Outcome validation.Outcome `json:"outcome"`
 			Tags    []string           `json:"tags"`
-			Email   string             `json:"email,omitempty"`
+			Email   string             `json:"email"`
 			Domain  string             `json:"domain"`
 			apim.Summary
 		}{
 			Outcome: validationResult.Outcome,
 			Tags:    validationResult.Tags,
 			Email:   email,
-			Domain:  domain,
+			Domain:  classified.Domain,
 			Summary: summary,
 		}
 

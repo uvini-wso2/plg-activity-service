@@ -10,19 +10,13 @@ import (
 	"github.com/uvini-wso2/plg-activity-service/internal/validation"
 )
 
-// Validate handles GET /validate?company_id=...&user_id=...&email=...&domain=...&category=...
+// Validate handles GET /asgardeo/validate?company_id=...&user_id=...&email=...
 //
-// Returns the validation outcome + reasoning tags, ALONGSIDE the full
-// prospect activity summary (org info, tenure, product activity) — per
-// the "Validation Insight Delivery" requirement: a CS engineer needs to
-// see not just the decision, but the underlying data that produced it.
-//
-// TEMPORARY (2026-09-11): since the real classification API doesn't exist
-// yet, this endpoint accepts the classification result directly as query
-// params, rather than calling that API internally. Once the classification
-// API is ready, replace the param-parsing below with a real API call, and
-// the rest of this handler (Search → Classify → response) stays the same.
-func Validate(client eventsClient) http.HandlerFunc {
+// UPDATED (2026-09-30): now calls the real classification API internally,
+// given just an email — replacing the earlier temporary approach where
+// the caller had to pass domain/category directly, since that API didn't
+// exist yet.
+func Validate(client eventsClient, classifier classificationClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		companyID, errMsg := validateParam("company_id", r.URL.Query().Get("company_id"))
 		if errMsg != "" {
@@ -40,10 +34,15 @@ func Validate(client eventsClient) http.HandlerFunc {
 		}
 
 		email := strings.TrimSpace(r.URL.Query().Get("email"))
-		domain := strings.TrimSpace(r.URL.Query().Get("domain"))
-		category := strings.TrimSpace(r.URL.Query().Get("category"))
-		if domain == "" || category == "" {
-			http.Error(w, `{"error":"domain and category query parameters are required"}`, http.StatusBadRequest)
+		if email == "" {
+			http.Error(w, `{"error":"email query parameter is required"}`, http.StatusBadRequest)
+			return
+		}
+
+		classified, err := classifier.Classify(email)
+		if err != nil {
+			slog.Error("email classification failed", "error", err)
+			http.Error(w, `{"error":"failed to classify email"}`, http.StatusBadGateway)
 			return
 		}
 
@@ -65,20 +64,16 @@ func Validate(client eventsClient) http.HandlerFunc {
 
 		ec := validation.EmailClassification{
 			Email:    email,
-			Domain:   domain,
-			Category: category,
+			Domain:   classified.Domain,
+			Category: classified.Category,
 		}
 
 		validationResult := validation.Classify(ec, summary)
 
-		// Response combines the validation decision with the full prospect
-		// summary (org info, tenure, product activity) — same
-		// Summary-embedding pattern used by /events, plus the classification
-		// inputs and the decision itself layered on top.
 		response := struct {
 			Outcome validation.Outcome `json:"outcome"`
 			Tags    []string           `json:"tags"`
-			Email   string             `json:"email,omitempty"`
+			Email   string             `json:"email"`
 			Domain  string             `json:"domain"`
 			moesif.Summary
 			EventsFound int `json:"eventsFound"`
@@ -86,7 +81,7 @@ func Validate(client eventsClient) http.HandlerFunc {
 			Outcome:     validationResult.Outcome,
 			Tags:        validationResult.Tags,
 			Email:       email,
-			Domain:      domain,
+			Domain:      classified.Domain,
 			Summary:     summary,
 			EventsFound: result.Result.Total,
 		}

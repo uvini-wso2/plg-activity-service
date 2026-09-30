@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/uvini-wso2/plg-activity-service/internal/apim"
+	"github.com/uvini-wso2/plg-activity-service/internal/classification"
 	"github.com/uvini-wso2/plg-activity-service/internal/email"
 	"github.com/uvini-wso2/plg-activity-service/internal/moesif"
 )
@@ -54,6 +55,21 @@ func (m *mockAPIMClient) Search(criteria apim.FilterCriteria) (apim.SearchRespon
 	m.LastCriteria = criteria
 	if m.Err != nil {
 		return apim.SearchResponse{}, m.Err
+	}
+	return m.Response, nil
+}
+
+// mockClassificationClient is a test double for classificationClient.
+type mockClassificationClient struct {
+	Response classification.Response
+	Err      error
+	LastCall string
+}
+
+func (m *mockClassificationClient) Classify(email string) (classification.Response, error) {
+	m.LastCall = email
+	if m.Err != nil {
+		return classification.Response{}, m.Err
 	}
 	return m.Response, nil
 }

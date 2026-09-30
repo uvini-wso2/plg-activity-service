@@ -8,6 +8,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/uvini-wso2/plg-activity-service/internal/apim"
+	"github.com/uvini-wso2/plg-activity-service/internal/classification"
 	emailpkg "github.com/uvini-wso2/plg-activity-service/internal/email"
 	"github.com/uvini-wso2/plg-activity-service/internal/handler"
 	"github.com/uvini-wso2/plg-activity-service/internal/moesif"
@@ -31,13 +32,18 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler)
-	mux.HandleFunc("GET /asgardeo/validate", handler.Validate(client))
+	classifier := classification.NewClient(classification.Config{
+		BaseURL:    os.Getenv("CLASSIFICATION_API_BASE_URL"),
+		AuthHeader: os.Getenv("CLASSIFICATION_API_AUTH_HEADER"),
+		AuthValue:  os.Getenv("CLASSIFICATION_API_AUTH_VALUE"),
+	})
+	mux.HandleFunc("GET /asgardeo/validate", handler.Validate(client, classifier))
 
 	apimClient := apim.NewClient(apim.Config{
 		APIKey:  os.Getenv("APIM_MOESIF_API_KEY"),
 		BaseURL: os.Getenv("MOESIF_BASE_URL"),
 	})
-	mux.HandleFunc("GET /apim/validate", handler.APIMValidate(apimClient))
+	mux.HandleFunc("GET /apim/validate", handler.APIMValidate(apimClient, classifier))
 
 	emailGenerator := emailpkg.NewClient(emailpkg.Config{
 		APIKey: os.Getenv("ANTHROPIC_API_KEY"),
