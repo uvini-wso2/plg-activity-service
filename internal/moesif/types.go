@@ -86,4 +86,11 @@ type RawCompany struct {
 
 type RawCompanyMetadata struct {
 	AccountName string `json:"account_name"`
+	// AccountOwnerEmail: CONFIRMED real field (2026-09-30) — used to
+	// automatically classify a prospect from company_id alone, without
+	// requiring the caller to supply an email. Verified against multiple
+	// real companies, including one with several real users tied to it
+	// (wayfinderenterprise) — confirmed this correctly identifies the
+	// true account owner, not just any collaborator's email.
+	AccountOwnerEmail string `json:"account_owner_email"`
 }

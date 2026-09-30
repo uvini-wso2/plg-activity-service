@@ -64,12 +64,17 @@ type ProductActivity struct {
 // consistent across all products; product-specific signals live in
 // ProductActivity instead.
 type Summary struct {
-	OrganizationName string          `json:"organizationName,omitempty"`
-	FirstSeen        string          `json:"firstSeen"`
-	LastActivity     string          `json:"lastActivity"`
-	Timezone         string          `json:"timezone,omitempty"`
-	CountryName      string          `json:"countryName,omitempty"`
-	ProductActivity  ProductActivity `json:"productActivity"`
+	OrganizationName string `json:"organizationName,omitempty"`
+	// AccountOwnerEmail: NEW (2026-09-30) — used to automatically classify
+	// a prospect from company_id alone, without requiring the caller to
+	// supply an email. Not exposed in the public JSON response (that's
+	// handled internally by the handler) — omitted here entirely.
+	AccountOwnerEmail string          `json:"-"`
+	FirstSeen         string          `json:"firstSeen"`
+	LastActivity      string          `json:"lastActivity"`
+	Timezone          string          `json:"timezone,omitempty"`
+	CountryName       string          `json:"countryName,omitempty"`
+	ProductActivity   ProductActivity `json:"productActivity"`
 }
 
 // Normalize aggregates a slice of raw Moesif hits (already filtered to a
@@ -84,6 +89,9 @@ func Normalize(hits []RawHit) Summary {
 
 		if summary.OrganizationName == "" && src.Company.Metadata.AccountName != "" {
 			summary.OrganizationName = src.Company.Metadata.AccountName
+		}
+		if summary.AccountOwnerEmail == "" && src.Company.Metadata.AccountOwnerEmail != "" {
+			summary.AccountOwnerEmail = src.Company.Metadata.AccountOwnerEmail
 		}
 		if summary.ProductActivity.OnboardingSetupType == "" && src.Metadata.WizardPath != "" {
 			summary.ProductActivity.OnboardingSetupType = src.Metadata.WizardPath

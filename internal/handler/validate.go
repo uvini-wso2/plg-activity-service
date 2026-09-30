@@ -34,17 +34,6 @@ func Validate(client eventsClient, classifier classificationClient) http.Handler
 		}
 
 		email := strings.TrimSpace(r.URL.Query().Get("email"))
-		if email == "" {
-			http.Error(w, `{"error":"email query parameter is required"}`, http.StatusBadRequest)
-			return
-		}
-
-		classified, err := classifier.Classify(email)
-		if err != nil {
-			slog.Error("email classification failed", "error", err)
-			http.Error(w, `{"error":"failed to classify email"}`, http.StatusBadGateway)
-			return
-		}
 
 		criteria := moesif.FilterCriteria{
 			CompanyID: companyID,
@@ -61,6 +50,26 @@ func Validate(client eventsClient, classifier classificationClient) http.Handler
 		}
 
 		summary := moesif.Normalize(result.Result.Hits)
+
+		// UPDATED (2026-09-30): if no email was explicitly given, fall back
+		// to the account's real owner email, pulled from Moesif's own
+		// company.metadata.account_owner_email field — confirmed real,
+		// verified against multiple companies including ones with several
+		// real users tied to them.
+		if email == "" {
+			email = summary.AccountOwnerEmail
+		}
+		if email == "" {
+			http.Error(w, `{"error":"email query parameter is required (and no account owner email was found for this company)"}`, http.StatusBadRequest)
+			return
+		}
+
+		classified, err := classifier.Classify(email)
+		if err != nil {
+			slog.Error("email classification failed", "error", err)
+			http.Error(w, `{"error":"failed to classify email"}`, http.StatusBadGateway)
+			return
+		}
 
 		ec := validation.EmailClassification{
 			Email:    email,

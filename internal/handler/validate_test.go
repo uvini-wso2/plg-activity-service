@@ -161,3 +161,62 @@ func TestValidate_IncludesFullSummary(t *testing.T) {
 		t.Errorf("expected outcome = PLG CS Eligible (meaningful activity), got %v", body["outcome"])
 	}
 }
+
+// TestValidate_UsesAccountOwnerEmailWhenNoEmailGiven confirms the new
+// company_id-only flow (2026-09-30): when no email is given, the real
+// account owner email from Moesif's own company data is used instead.
+func TestValidate_UsesAccountOwnerEmailWhenNoEmailGiven(t *testing.T) {
+	mock := &mockMoesifClient{
+		Response: moesif.SearchResponse{
+			Result: moesif.HitsResult{
+				Hits: []moesif.RawHit{
+					{
+						Source: moesif.RawSource{
+							ActionName: moesif.ActionNameOnboardingStepCompleted,
+							Request:    moesif.RawRequest{Time: "2026-09-07T08:30:21.000"},
+							Company: moesif.RawCompany{Metadata: moesif.RawCompanyMetadata{
+								AccountName:       "wayfinderenterprise",
+								AccountOwnerEmail: "anuradhak@wso2.com",
+							}},
+						},
+					},
+				},
+				Total: 1,
+			},
+		},
+	}
+	classifier := &mockClassificationClient{
+		Response: classification.Response{Domain: "wso2.com", Category: classification.CategoryCorporate},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/asgardeo/validate?company_id=company_456", nil)
+	rec := httptest.NewRecorder()
+
+	Validate(mock, classifier)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if classifier.LastCall != "anuradhak@wso2.com" {
+		t.Errorf("expected classifier called with the account owner email, got %q", classifier.LastCall)
+	}
+}
+
+// TestValidate_NoEmailAndNoAccountOwnerEmail confirms a clean 400 error
+// when neither an explicit email NOR a discoverable account owner email
+// exists.
+func TestValidate_NoEmailAndNoAccountOwnerEmail(t *testing.T) {
+	mock := &mockMoesifClient{
+		Response: moesif.SearchResponse{
+			Result: moesif.HitsResult{Hits: []moesif.RawHit{}, Total: 0},
+		},
+	}
+	classifier := &mockClassificationClient{}
+	req := httptest.NewRequest(http.MethodGet, "/asgardeo/validate?company_id=company_456", nil)
+	rec := httptest.NewRecorder()
+
+	Validate(mock, classifier)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rec.Code)
+	}
+}
