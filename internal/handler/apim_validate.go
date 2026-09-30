@@ -13,8 +13,11 @@ import (
 // APIMValidate handles GET /apim/validate?company_id=...&user_id=...&email=...
 //
 // UPDATED (2026-09-30): now calls the real classification API internally,
-// same as Validate() (the Asgardeo handler) — see that file's doc comment
-// for details.
+// same as Validate() (the Asgardeo handler). ALSO UPDATED (2026-09-30):
+// falls back to the earliest-seen user's email when none is explicitly
+// given — see apim.Summary.FirstSeenUserEmail's doc comment for why this
+// differs from Asgardeo's approach (no confirmed "account owner" field
+// exists for APIM).
 func APIMValidate(client apimClient, classifier classificationClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		companyID, errMsg := validateParam("company_id", r.URL.Query().Get("company_id"))
@@ -33,17 +36,6 @@ func APIMValidate(client apimClient, classifier classificationClient) http.Handl
 		}
 
 		email := strings.TrimSpace(r.URL.Query().Get("email"))
-		if email == "" {
-			http.Error(w, `{"error":"email query parameter is required"}`, http.StatusBadRequest)
-			return
-		}
-
-		classified, err := classifier.Classify(email)
-		if err != nil {
-			slog.Error("email classification failed", "error", err)
-			http.Error(w, `{"error":"failed to classify email"}`, http.StatusBadGateway)
-			return
-		}
 
 		criteria := apim.FilterCriteria{
 			CompanyID: companyID,
@@ -60,6 +52,21 @@ func APIMValidate(client apimClient, classifier classificationClient) http.Handl
 		}
 
 		summary := apim.Normalize(result.Result.Hits, result.Result.Total)
+
+		if email == "" {
+			email = summary.FirstSeenUserEmail
+		}
+		if email == "" {
+			http.Error(w, `{"error":"email query parameter is required (no user email was found for this company)"}`, http.StatusBadRequest)
+			return
+		}
+
+		classified, err := classifier.Classify(email)
+		if err != nil {
+			slog.Error("email classification failed", "error", err)
+			http.Error(w, `{"error":"failed to classify email"}`, http.StatusBadGateway)
+			return
+		}
 
 		ec := validation.EmailClassification{
 			Email:    email,

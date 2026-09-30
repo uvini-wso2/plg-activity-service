@@ -81,13 +81,20 @@ type ProductActivity struct {
 // domain-based WSO2 check as every other product (see
 // internal/validation.IsWSO2Domain), not its own direct signal.
 type Summary struct {
-	OrganizationName string          `json:"organizationName,omitempty"`
-	FirstSeen        string          `json:"firstSeen"`
-	LastActivity     string          `json:"lastActivity"`
-	Timezone         string          `json:"timezone,omitempty"`
-	CountryName      string          `json:"countryName,omitempty"`
-	ProductActivity  ProductActivity `json:"productActivity"`
-	EventsFound      int             `json:"eventsFound"`
+	OrganizationName string `json:"organizationName,omitempty"`
+	// FirstSeenUserEmail: APIM has no dedicated "account owner" field like
+	// Asgardeo's account_owner_email (confirmed 2026-09-30 — checked the
+	// real company record directly). Per team decision, company_id-only
+	// lookups use the email tied to this company's chronologically
+	// EARLIEST recorded event instead. Not exposed in the public JSON
+	// response.
+	FirstSeenUserEmail string          `json:"-"`
+	FirstSeen          string          `json:"firstSeen"`
+	LastActivity       string          `json:"lastActivity"`
+	Timezone           string          `json:"timezone,omitempty"`
+	CountryName        string          `json:"countryName,omitempty"`
+	ProductActivity    ProductActivity `json:"productActivity"`
+	EventsFound        int             `json:"eventsFound"`
 }
 
 // meaningfulActivityThreshold is no longer used for HasMeaningfulActivity
@@ -156,6 +163,9 @@ func Normalize(hits []RawHit, total int) Summary {
 			}
 			if earliest.IsZero() || eventTime.Before(earliest) {
 				earliest = eventTime
+				if src.User.Email != "" {
+					summary.FirstSeenUserEmail = src.User.Email
+				}
 			}
 		}
 	}
