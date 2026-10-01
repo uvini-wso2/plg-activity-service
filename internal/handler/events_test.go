@@ -21,6 +21,15 @@ func sampleHits() []moesif.RawHit {
 				Request:    moesif.RawRequest{Time: "2026-08-20T10:30:00.000"},
 			},
 		},
+		{
+			Source: moesif.RawSource{
+				CompanyID:  "company_456",
+				UserID:     "user_123",
+				ActionName: moesif.ActionNameOnboardingSkipped,
+				Request:    moesif.RawRequest{Time: "2026-08-20T10:31:00.000"},
+				Metadata:   moesif.RawMetadata{StepName: "welcome_option_selected"},
+			},
+		},
 	}
 }
 
@@ -177,7 +186,9 @@ func TestEvents_ResponseFieldNames(t *testing.T) {
 	if !ok {
 		t.Fatal("expected productActivity to be an object")
 	}
-	requiredProductActivityFields := []string{"applicationCreated", "hasCompletedOnboarding", "skippedStepNumber"}
+	// skippedStepNumber REMOVED from the public response per team
+	// feedback (2026-10-01) — only skippedStepName is exposed now.
+	requiredProductActivityFields := []string{"applicationCreated", "hasCompletedOnboarding", "skippedStepName"}
 	for _, field := range requiredProductActivityFields {
 		if _, ok := productActivity[field]; !ok {
 			t.Errorf("expected productActivity to contain field %q, but it was missing", field)

@@ -55,7 +55,12 @@ type ProductActivity struct {
 	// Onboarding-Skipped event, if any — used by validation logic to
 	// detect "started but stopped at an identifiable point". nil means no
 	// skip occurred; a real, valid step (e.g. 0) is a genuine skip.
-	SkippedStepNumber   *int   `json:"skippedStepNumber"`
+	//
+	// SkippedStepNumber: REMOVED from the public JSON response per team
+	// feedback (2026-10-01) — kept internally (not json:"-") since
+	// Classify() still needs the nil-vs-zero distinction to detect a
+	// genuine skip. Only SkippedStepName is now exposed externally.
+	SkippedStepNumber   *int   `json:"-"`
 	SkippedStepName     string `json:"skippedStepName,omitempty"`
 	OnboardingSetupType string `json:"onboardingSetupType,omitempty"`
 }
