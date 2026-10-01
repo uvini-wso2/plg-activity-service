@@ -2,7 +2,7 @@
 
 A Go HTTP service that retrieves and interprets product activity from Moesif, classifies prospect emails, and decides whether they're worth CS outreach — across multiple SaaS products, for use in the PLG (Product-Led Growth) outreach tool.
 
-**Status:** Asgardeo and APIM are both fully built — activity retrieval, real email classification, validation/classification logic, all tested and verified against real data, **with zero placeholders remaining in the core pipeline** (as of 2026-09-30). Phase 03 (email generation) is built and tested with mocks, blocked only on real Claude API access.
+**Status (2026-10-01):** Asgardeo and APIM are both fully built — activity retrieval, real email classification, validation/classification logic, all tested and verified against real data. **Both products now support company_id-only lookups** — no email required from the caller at all, matching real PLG-insights usage (confirmed with the team, 2026-09-30/10-01). Phase 03 (email generation) is built and tested with mocks for both products, blocked only on real Claude API access.
 
 ---
 
@@ -17,7 +17,7 @@ go run ./cmd/server/main.go
 Server starts on port 8081 by default.
 
 ```bash
-curl "http://localhost:8081/asgardeo/validate?company_id=<a-real-company-id>&email=<a-real-email>"
+curl "http://localhost:8081/asgardeo/validate?company_id=<a-real-company-id>"
 ```
 
 Run the tests:
@@ -29,11 +29,9 @@ go test ./... -v
 
 ## Public API (exposed to the PLG portal)
 
-Per team decision (2026-09-16, refined 2026-09-29), the public surface is: `/asgardeo/validate`, `/apim/validate`, and the two `/generate-email` endpoints. Raw per-product activity endpoints are internal-only (see below).
+Per team decision (2026-09-16, refined 2026-09-29), the public surface is: `/asgardeo/validate`, `/apim/validate`, `/asgardeo/generate-email`, `/apim/generate-email`. Raw per-product activity endpoints are internal-only (see below).
 
 ### `GET /asgardeo/validate` and `GET /apim/validate`
-
-**UPDATED (2026-09-30):** these now call the **real classification API** internally, given just an email address — no longer accepting `domain`/`category` as separate inputs. This closes out what had been a placeholder since the classification API didn't exist yet.
 
 **Query parameters:**
 
@@ -41,28 +39,42 @@ Per team decision (2026-09-16, refined 2026-09-29), the public surface is: `/asg
 |---|---|---|
 | `company_id` | One of `company_id`/`user_id` required | Moesif company identifier |
 | `user_id` | One of `company_id`/`user_id` required | Moesif user identifier. Not always a UUID. |
-| `email` | **Required** | The prospect's email — the service classifies it itself now |
+| `email` | **Optional** | If omitted, the service discovers a real email on its own — see below. Real PLG-insights usage gives only `company_id`, confirmed with the team. |
+
+**How email is discovered when not given (2026-09-30/10-01):**
+
+- **Asgardeo:** uses `company.metadata.account_owner_email` — a real, dedicated field confirmed directly on Moesif's company data. Verified against companies with multiple real users tied to them (e.g. `wayfinderenterprise`, which has 2-3 different user emails floating around in its raw events) — confirmed this field correctly identifies the true account owner, not just any collaborator who happened to interact with the account.
+- **APIM:** has **no equivalent field** — checked the real company record directly via Moesif's Companies API (`GET /v1/search/~/companies/{id}`) and confirmed nothing resembling an "owner" field exists anywhere in it. Per team decision, falls back to the email tied to the company's chronologically **earliest recorded event** instead. This is a reasonable heuristic, not a confirmed authoritative field like Asgardeo's.
+
+If neither an explicit `email` nor a discoverable one exists, returns a `400` explaining why.
 
 **Classification rules, applied in this exact order** (shared between both products via `internal/validation.Classify`):
 
-1. **Disposable email → Excluded**, unconditionally.
+1. **Disposable email → Excluded**, unconditionally — even for accounts with strong, confirmed real engagement (verified: `jetbrains`, despite `apiCreated`/`gatewayActivated`/`componentDeployed`/`componentPromoted` all `true`, still correctly Excluded when given a disposable email).
 2. **`provider_testing` → Excluded**, tagged `Invalid Email`.
 3. **WSO2 domain (`wso2.com`) → Excluded.** Runs *before* the corporate check.
 4. **Corporate → Eligible**, unconditionally.
 5. **Personal → Eligible only with meaningful activity** — product-specific signal (see below).
 6. **Everything else → Monitored.**
 
-**Asgardeo's `productActivity`:** `applicationCreated`, `hasCompletedOnboarding`, `skippedStepNumber`/`skippedStepName`, `onboardingSetupType`.
+**Asgardeo's `productActivity`:**
 
-**APIM's `productActivity`:** `quickStartCompleted`, `quickStartSelectedProduct`, `deploymentModel`, `context` (not yet live in the product), `apiCreated`, `attemptedSourceMethod`, `validationSource`/`validationOutcome` (never fires in real data), `selectedSource`, `gatewayActivated`, `componentDeployed`, `componentTested`, `componentPromoted`, `componentKeyGenerated`, `selfHostedApiInvokedCount` (kept for reference only — **not used for eligibility**, see below), `hasMeaningfulActivity`.
+| Field | Meaning |
+|---|---|
+| `applicationCreated` | At least one onboarding step completed |
+| `hasCompletedOnboarding` | The *entire* wizard finished — distinct from `applicationCreated` |
+| `skippedStepName` | Name of the step onboarding was abandoned at, if any. **`skippedStepNumber` removed from the public response (2026-10-01, per team feedback) — kept internally only, since `Classify()` still needs the nil-vs-zero distinction to detect a genuine skip.** |
+| `onboardingSetupType` | `"full_setup"` or `"preview"` |
 
-**`hasMeaningfulActivity` for APIM, redefined 2026-09-29:** based on real lifecycle signals (`apiCreated`, `gatewayActivated`, `componentDeployed`, `componentTested`, `componentPromoted`, `componentKeyGenerated`) — any one of these counts. **Explicitly does NOT use `selfHostedApiInvokedCount`** — confirmed with the team that 100% of real accounts checked use SaaS deployment, so a self-hosted-only signal would almost never trigger regardless of real engagement.
+**APIM's `productActivity`:** `quickStartCompleted`, `quickStartSelectedProduct`, `deploymentModel`, `context` (not yet live in the product), `apiCreated`, `attemptedSourceMethod`, `validationSource`/`validationOutcome` (never fires in real data), `selectedSource`, `gatewayActivated`, `componentDeployed`, `componentTested`, `componentPromoted`, `componentKeyGenerated`, `selfHostedApiInvokedCount` (kept for reference only — **not used for eligibility**), `hasMeaningfulActivity`.
+
+**`hasMeaningfulActivity` for APIM (redefined 2026-09-29):** based on real lifecycle signals (`apiCreated`, `gatewayActivated`, `componentDeployed`, `componentTested`, `componentPromoted`, `componentKeyGenerated`) — any one counts. **Explicitly does NOT use `selfHostedApiInvokedCount`** — confirmed 100% of real accounts checked use SaaS deployment, so a self-hosted-only signal would almost never trigger regardless of real engagement.
 
 ### `GET /asgardeo/generate-email` and `GET /apim/generate-email`
 
 Run the same pipeline as their `/validate` counterparts, then feed the result into Claude to produce a personalized outreach email. Skip generation for `Excluded` prospects.
 
-**Status: built and tested with mocks for both products, confirmed to correctly reach the real Claude API call and fail gracefully** — since there's no valid `ANTHROPIC_API_KEY` yet (blocked for interns; may need a shared team key or a Choreo GenAI service connection instead).
+**Status: built and tested with mocks for both products, confirmed to correctly reach the real Claude API call and fail gracefully** — blocked on `ANTHROPIC_API_KEY`, which is likely unavailable to interns directly; may need a shared team key or a Choreo GenAI service connection instead.
 
 ---
 
@@ -71,9 +83,9 @@ Run the same pipeline as their `/validate` counterparts, then feed the result in
 `GET /asgardeo/events` and `GET /apim/events` return raw per-product activity directly, with no validation logic. **Not meant to be publicly exposed.**
 
 **Gated behind an environment variable, off by default:**
-
+```
 ENABLE_RAW_ACTIVITY_ROUTES=true
-
+```
 
 ---
 
@@ -81,7 +93,7 @@ ENABLE_RAW_ACTIVITY_ROUTES=true
 
 **Endpoint (staging):** `POST https://apis-stg.wso2.com/llkq/plg-email-classifier/v1.0/classify-email`
 
-**Confirmed real response shape** (verified twice — via Postman and `curl` — 2026-09-29/30):
+**Confirmed real response shape** (verified via Postman and `curl`, 2026-09-29/30):
 ```json
 {
   "email": "jane@acme.com",
@@ -101,9 +113,9 @@ ENABLE_RAW_ACTIVITY_ROUTES=true
 }
 ```
 
-**Important gotcha, caught before it caused a bug:** the `signals` object uses **camelCase** field names (`syntaxValid`, `mxValid`, `freeProvider`, `roleBased`) — not the snake_case originally assumed from the team's early example responses (`syntax_valid`, etc.). Our `internal/classification` package is built against the confirmed real shape.
+**Important gotcha, caught before it caused a bug:** `signals` uses **camelCase** field names — not the snake_case originally assumed from early team examples.
 
-**Authentication is still unresolved for real production use.** The only credential tested so far is a `Test-Key` header carrying a JWT explicitly marked `"keytype": "SANDBOX"`, expiring ~10 minutes after issue — clearly a short-lived testing credential, not meant for real, ongoing use. The real production authentication method (header name, credential type, how to obtain it) is still unknown. `Config.AuthHeader`/`AuthValue` are deliberately configurable (not hardcoded to `"Test-Key"`) so switching to the real method is a config change, not a code change.
+**Authentication is still unresolved for real production use.** The only credential tested is a `Test-Key` header carrying a JWT explicitly marked `"keytype": "SANDBOX"`, expiring ~10 minutes after issue. `Config.AuthHeader`/`AuthValue` are deliberately configurable so switching to the real method is a config change, not a code change.
 
 ---
 
@@ -117,15 +129,19 @@ Confirmed directly with the team (2026-09-22): the classification rule structure
 
 APIM had a direct flag Asgardeo doesn't. Removed for consistency — all products now use the same domain-only WSO2 check.
 
-### Why APIM prefers `company_id` over `user_id`
+### Why APIM prefers `company_id` over `user_id` for Search()
 
 Per a live, controlled team investigation (2026-09-22): most detailed APIM events are tagged with `company_id`, some lack `user_id` entirely.
 
-**Known accepted limitation:** one real case (`aloyayribedding`, `d2cc7cc8-62ab-4d96-91f8-a2bbada1e988`) proved the reverse can also happen for specific events. Team confirmed `company_id` as the standing default regardless — an accepted tradeoff.
+**Known accepted limitation:** one real case (`aloyayribedding`, `d2cc7cc8-62ab-4d96-91f8-a2bbada1e988`) proved the reverse can also happen for specific events — its real `Component-Created` activity isn't tagged with `company_id` at all. Team confirmed `company_id` as the standing default regardless. **This surfaced again concretely during company_id-only testing (2026-09-30):** this account's `productActivity` came back entirely `false` (missing its real activity), though the final outcome still happened to be correct since the discovered email was a genuine corporate domain, which overrides the activity check anyway. A personal-email version of this same scenario would produce the wrong outcome.
 
 ### Why `selfHostedApiInvokedCount` was removed from eligibility (2026-09-29)
 
-See the callout above — confirmed via testing 5 real accounts and 50 real deployment-choice events that ~100% of real APIM usage is SaaS, not self-hosted, making a self-hosted-only signal nearly useless for real decisions. Verified the fix by re-testing the two accounts (`jetbrains`, `unlimitechstore`) that had proven the original gap — both correctly flip to Eligible now.
+Confirmed via testing 5 real accounts and 50 real deployment-choice events that ~100% of real APIM usage is SaaS, not self-hosted.
+
+### Why Asgardeo and APIM use different company_id-only strategies (2026-09-30/10-01)
+
+See "How email is discovered" above. Asgardeo has a real, dedicated `account_owner_email` field (confirmed via Moesif's Companies API); APIM genuinely does not (also confirmed via the same API, checked directly) — so APIM uses an earliest-event heuristic instead.
 
 ---
 
@@ -133,27 +149,31 @@ See the callout above — confirmed via testing 5 real accounts and 50 real depl
 
 ### The `eventsFound` metric was seriously misleading (RESOLVED)
 
-Real accounts showed thousands of raw events, but almost none were genuine product activity — duplicate events, bot/monitoring traffic, and marketing-tracking pings were all being counted as real Moesif events.
+Real accounts showed thousands of raw events, but almost none were genuine product activity — duplicate events, bot/monitoring traffic, and marketing-tracking pings were all counted as real Moesif events.
 
 ### `company_id`-only lookups can miss real activity (KNOWN, ACCEPTED)
 
-Some real events for some accounts aren't tagged with `company_id` at all. Team decided to accept this tradeoff.
+See "Design decisions" above.
 
 ### `QuickStart-Validation` has never fired in real data
 
-Searched with exact match and broad wildcards across a full year of data — zero occurrences. `validationSource`/`validationOutcome` remain built correctly but unverifiable until this flow is actually used.
+Searched with exact match and broad wildcards across a full year of data — zero occurrences.
 
 ### The `context` field is a planned feature, not yet shipped
 
-Confirmed directly with the team (2026-09-24) — doesn't exist in production yet.
+Confirmed directly with the team (2026-09-24).
 
 ### Real Moesif pagination cap
 
-`Search()` fetches up to 1000 events per query, most-recent-first. Older lifecycle events can fall outside this window for very high-volume accounts — confirmed happening in practice.
+`Search()` fetches up to 1000 events per query, most-recent-first. Older lifecycle events can fall outside this window for very high-volume accounts.
 
 ### Classification API's real `signals` shape is camelCase, not snake_case
 
 See "The real classification API" section above.
+
+### A single Asgardeo company can have multiple real users with different emails
+
+Confirmed via `wayfinderenterprise` (2026-09-30) — found 2-3 distinct real user emails in its raw events, only one of which is the genuine account owner (per `account_owner_email`). The others turned out to be collaborators (confirmed by checking whether the company appeared in that user's `owned_companies` vs. merely `associated_companies` list).
 
 ---
 
@@ -163,43 +183,46 @@ See "The real classification API" section above.
 - No authentication/login tracking at all, confirmed across all 4 environments.
 - `session_token` is literally the request's IP address.
 - Real `action_name` values: `organization_created`, `user_created`, `organization_subscribed`, `Onboarding-Step-Completed`, `Onboarding-Started`, `Onboarding-Skipped`, `Onboarding-Completed`, `Onboarding-Step-Back`.
+- Confirmed real test companies for the owner-email fallback: `wayfinderenterprise` (multi-user, real owner `anuradhak@wso2.com`), `roadsidecoderytt` (single user, `eon55dude@gmail.com`), `orgsacma` (`pushpendarsingh5809@gmail.com`).
 
 ### APIM (api-platform / "Bijira")
 - Real product URLs are `console.bijira.dev`.
 - Company name lives at `company.metadata.name`, not `account_name`.
 - Does have genuine auth tracking (`Landing-SignIn-Succeeded`).
-- Confirmed real `action_name` values: `Landing-SignIn-Succeeded`, `QuickStart-Skipped`, `QuickStart-Selected-Product`, `Component-Created-Start`/`-End`, `QuickStart-Attempted-Source`, `QuickStart-Validation` (never fires), `QuickStart-Selected-Source`, `Gateway-Activated`, `Component-Deployed`, `Component-Tested`, `Component-Promoted`, `Component-Generated-Key`, `API-Invoked` (self-hosted only, no longer used for eligibility).
-- Real deployment split confirmed: 100% of 50 real deployment-choice events checked were `"saas"`; zero were `"gateway"`.
+- Confirmed real `action_name` values: `Landing-SignIn-Succeeded`, `QuickStart-Skipped`, `QuickStart-Selected-Product`, `Component-Created-Start`/`-End`, `QuickStart-Attempted-Source`, `QuickStart-Validation` (never fires), `QuickStart-Selected-Source`, `Gateway-Activated`, `Component-Deployed`, `Component-Tested`, `Component-Promoted`, `Component-Generated-Key`, `API-Invoked` (self-hosted only).
+- Real deployment split: 100% of 50 real deployment-choice events checked were `"saas"`; zero were `"gateway"`.
+- Confirmed via Moesif's Companies API (`GET /v1/search/~/companies/{id}`) that company records have no owner/primary-contact field of any kind.
 - Confirmed real test accounts: `shopwaveorg`, `jetbrains`, `unlimitechstore`, `aloyayribedding`.
 
 ---
 
 ## Architecture
 
-cmd/server/main.go — HTTP server, route registration (public vs. gated)
+```
+cmd/server/main.go              — HTTP server, route registration (public vs. gated)
 
-internal/moesif/ — Asgardeo integration
-internal/apim/ — APIM integration (separate package: real data shape differs)
-internal/classification/ — Real email classification API client (2026-09-30)
-internal/validation/ — Shared classification rule logic (Classify, Outcome, Tag types,
-IsWSO2Domain), used by BOTH products
-internal/email/ — Phase 03: email generation (built, blocked on Claude API access)
-internal/handler/ — HTTP handlers tying everything together
+internal/moesif/                — Asgardeo integration
+internal/apim/                  — APIM integration (separate package: real data shape differs)
+internal/classification/        — Real email classification API client
+internal/validation/            — Shared classification rule logic (Classify, Outcome, Tag types,
+                                   IsWSO2Domain), used by BOTH products
+internal/email/                 — Phase 03: email generation (built, blocked on Claude API access)
+internal/handler/                — HTTP handlers tying everything together
+```
 
-
-**Data flow (`/asgardeo/validate` or `/apim/validate`):** `email` → real classification API call → `Search()` (Moesif) → `Normalize()` → `Classify()` (shared package, using the real classification result) → JSON response. **No manually-supplied classification data required anymore.**
+**Data flow (`/asgardeo/validate` or `/apim/validate`):** `company_id`/`user_id` → `Search()` (Moesif) → `Normalize()` (also discovers a fallback email if needed) → real classification API call → `Classify()` (shared package) → JSON response.
 
 ---
 
 ## Choreo deployment
 
-**Status (2026-09-30):** access granted to WSO2's org in Choreo. Go is natively supported as a build preset — no Docker rework needed. Secrets move from `.env` into Choreo's own encrypted vault, added via the console post-deployment. A `.choreo/component.yaml` declaring the port is still needed. Which specific Choreo project to deploy into is still being confirmed with the team.
+**Status (2026-10-01):** access granted to WSO2's org in Choreo. Go is natively supported as a build preset — no Docker rework needed. Secrets move from `.env` into Choreo's own encrypted vault, added via the console post-deployment. A `.choreo/component.yaml` declaring the port is still needed. Which specific Choreo project to deploy into is still being confirmed with the team.
 
 ---
 
 ## Testing notes
 
-~80 tests across all packages, all runnable without any real API key — mocks satisfy every external dependency (Moesif, the classification API, Claude).
+~85 tests across all packages, all runnable without any real API key — mocks satisfy every external dependency (Moesif, the classification API, Claude).
 
 ---
 
